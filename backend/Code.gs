@@ -664,3 +664,291 @@ function indicatorsGet_(p) {
   row.result = Math.round((row.income - row.expense) * 100) / 100;
   return row;
 }
+
+
+// ============================================================
+// PARSERS — notificações e contracheque
+// ============================================================
+/**
+ * NOSSA FINANÇA — Parsers.gs
+ * Funções puras de leitura de texto: notificações bancárias e contracheque.
+ * São heurísticas: o app SEMPRE mostra o resultado para o usuário conferir antes de gravar.
+ */
+
+function normalize_(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** "1.234,56" -> 1234.56 ; "1234.56" -> 1234.56 ; "1.234" -> 1234 */
+function parseMoney_(s) {
+  let t = String(s).replace(/[^\d.,]/g, '');
+  if (!t) return null;
+  if (t.indexOf(',') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+  else if (!/^\d+\.\d{1,2}$/.test(t)) t = t.replace(/\./g, '');
+  const n = parseFloat(t);
+  return isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+const BANKS_ = [
+  ['nubank', 'Nubank'], ['itau', 'Itaú'], ['bradesco', 'Bradesco'], ['santander', 'Santander'], ['banco inter', 'Inter'],
+  ['inter', 'Inter'], ['c6', 'C6 Bank'], ['caixa', 'Caixa'], ['banco do brasil', 'Banco do Brasil'], ['picpay', 'PicPay'],
+  ['mercado pago', 'Mercado Pago'], ['sicredi', 'Sicredi'], ['sicoob', 'Sicoob'], ['neon', 'Neon'], ['will bank', 'Will Bank'],
+  ['pagbank', 'PagBank'], ['bnb', 'Banco do Nordeste'], ['btg', 'BTG'], ['xp', 'XP'], ['alelo', 'Alelo'], ['sodexo', 'Sodexo'],
+  ['ticket', 'Ticket'], ['vr ', 'VR'], ['ifood benef', 'iFood Benefícios']
+];
+
+function parseNotification_(text, app, categories) {
+  const raw = String(text || '').replace(/\s+/g, ' ').trim();
+  const norm = normalize_(raw);
+  const out = { amount: null, merchant: '', institution: '', type: 'expense', categoryId: '', confidence: 'low' };
+
+  // valor: primeiro R$ que não seja saldo/limite; prefere o que vem depois de "valor"
+  const re = /R\$\s*([\d]{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:,\d{2})?)/gi;
+  let m, first = null, preferred = null;
+  while ((m = re.exec(raw))) {
+    const before = normalize_(raw.slice(Math.max(0, m.index - 18), m.index));
+    if (/saldo|limite|disponivel/.test(before)) continue;
+    const v = parseMoney_(m[1]);
+    if (v === null) continue;
+    if (first === null) first = v;
+    if (/valor( de| da| do)?\s*$/.test(before) && preferred === null) preferred = v;
+  }
+  out.amount = preferred !== null ? preferred : first;
+
+  // tipo: vence a palavra-chave que aparece primeiro
+  const inc = /(voce recebeu|recebeu um pix|pix recebido|recebeu uma transferencia|transferencia recebida|ted recebida|doc recebido|deposito|credito em conta|salario|estorno|reembolso|cashback|rendimento|recebimento)/.exec(norm);
+  const exp = /(compra|pagamento|pague|pix enviado|voce enviou|enviou um pix|transferencia enviada|voce transferiu|transferiu|debito|saque|fatura|boleto|pagou|cobranca|assinatura|recarga)/.exec(norm);
+  if (inc && (!exp || inc.index < exp.index)) { out.type = 'income'; out.confidence = 'medium'; }
+  else if (exp) { out.type = 'expense'; out.confidence = 'medium'; }
+
+  // estabelecimento / pessoa
+  const stop = '(?=\\s+(?:no valor|valor|por R\\$|R\\$|no cart[aã]o|com final|final \\d|[àa]s \\d|em \\d{2}\\/|hoje|agora)|[.,;]|$)';
+  let mm = new RegExp('(?:compra|pagamento|d[eé]bito)[^.]*?\\b(?:em|no|na)\\s+(?!cart[aã]o|valor|conta)([^,.;]+?)' + stop, 'i').exec(raw);
+  if (!mm) mm = new RegExp('\\b(?:[Dd]e|[Pp]ara)\\s+([A-ZÀ-Ú][^,.;]{2,40}?)' + stop).exec(raw);
+  if (!mm) mm = new RegExp('\\b(?:em|no|na)\\s+([A-Z0-9][A-Z0-9 *.&\'-]{2,30})' + stop).exec(raw);
+  if (mm) out.merchant = mm[1].replace(/\s+/g, ' ').replace(/^(?:o|a)\s+/i, '').trim().slice(0, 60);
+
+  // instituição
+  const hay = normalize_(app) + ' ' + norm;
+  for (let i = 0; i < BANKS_.length; i++) {
+    if (hay.indexOf(BANKS_[i][0]) >= 0) { out.institution = BANKS_[i][1]; break; }
+  }
+
+  // categoria sugerida: palavra-chave mais específica (mais longa) que aparece no texto
+  const hayCat = normalize_(out.merchant + ' ' + raw);
+  let best = 0;
+  (categories || []).forEach(function (c) {
+    if (c.type !== out.type || !c.keywords) return;
+    String(c.keywords).split(',').forEach(function (k) {
+      const kw = normalize_(k);
+      if (kw.length >= 2 && kw.length > best && new RegExp('(^|[^a-z0-9])' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)').test(hayCat)) { best = kw.length; out.categoryId = c.id; }
+    });
+  });
+  if (out.amount !== null && out.merchant) out.confidence = 'high';
+  return out;
+}
+
+// ---------------------------------------------------------------- OCR (Drive)
+
+/** Converte PDF/imagem em texto usando o OCR do Drive (serviço avançado "Drive API" v2). */
+function ocrToText_(blob) {
+  if (typeof Drive === 'undefined' || !Drive.Files) {
+    throw fail_('OCR_UNAVAILABLE', 'Ative o serviço "Drive API" (v2) no Apps Script para ler contracheques.');
+  }
+  let file;
+  try {
+    file = Drive.Files.insert({ title: 'tmp-ocr-' + uid_(), mimeType: blob.getContentType() }, blob, { ocr: true, ocrLanguage: 'pt' });
+    return DocumentApp.openById(file.id).getBody().getText();
+  } catch (e) {
+    throw fail_('OCR_FAILED', 'Não consegui ler o arquivo. Tente outro PDF ou uma foto mais nítida.');
+  } finally {
+    if (file && file.id) { try { Drive.Files.remove(file.id); } catch (e2) { /* ignore */ } }
+  }
+}
+
+// ---------------------------------------------------------------- contracheque
+
+const MONTHS_PT_ = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const PAYSLIP_LABELS_ = {
+  gross: /total (de |dos )?(vencimentos|proventos)|salario bruto|total bruto|rendimentos totais/,
+  discounts: /total (de |dos |das )?(descontos|deducoes)|descontos totais/,
+  net: /liquido( a receber| do mes)?|valor liquido|total liquido/
+};
+
+function parsePayslipText_(text) {
+  const lines = String(text || '').split(/\r?\n/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+  const out = { competence: '', gross: null, discounts: null, net: null, items: [], warnings: [] };
+  const moneyRe = /\d{1,3}(?:\.\d{3})*,\d{2}/;
+
+  // competência
+  const flat = normalize_(lines.join(' \n '));
+  let c = /(?:competencia|referencia|mes\/ano|periodo)[^\d\n]{0,15}(\d{2})\s*[\/.-]\s*(\d{4})/.exec(flat);
+  if (c) out.competence = c[2] + '-' + c[1];
+  else {
+    c = new RegExp('(' + MONTHS_PT_.join('|') + ')\\s*(?:de|\\/)?\\s*(\\d{4})').exec(flat);
+    if (c) out.competence = c[2] + '-' + ('0' + (MONTHS_PT_.indexOf(c[1]) + 1)).slice(-2);
+  }
+
+  // totais: primeiro valor depois do rótulo (mesma linha ou até 2 linhas abaixo)
+  function findAfter(labelRe) {
+    for (let i = 0; i < lines.length; i++) {
+      const n = normalize_(lines[i]), m = labelRe.exec(n);
+      if (!m) continue;
+      const tail = lines[i].slice(Math.min(m.index + m[0].length, lines[i].length));
+      let v = moneyRe.exec(tail);
+      for (let k = 1; !v && k <= 2 && i + k < lines.length; k++) v = moneyRe.exec(lines[i + k]);
+      if (v) return parseMoney_(v[0]);
+    }
+    return null;
+  }
+  out.gross = findAfter(PAYSLIP_LABELS_.gross);
+  out.discounts = findAfter(PAYSLIP_LABELS_.discounts);
+  out.net = findAfter(PAYSLIP_LABELS_.net);
+
+  // itens (linhas de rubrica com um valor no fim)
+  const rowRe = /^(?:\d{1,5}\s+)?(.{3,45}?)\s+(?:\d{1,3}(?:[.,]\d{1,2})?\s*%?\s+)?(\d{1,3}(?:\.\d{3})*,\d{2})\s*([CD])?$/;
+  const seen = {};
+  lines.forEach(function (ln) {
+    const n = normalize_(ln);
+    if (PAYSLIP_LABELS_.gross.test(n) || PAYSLIP_LABELS_.discounts.test(n) || PAYSLIP_LABELS_.net.test(n) || /^base|base de calculo|salario base|fgts mes/.test(n)) return;
+    const m = rowRe.exec(ln);
+    if (!m) return;
+    const label = m[1].replace(/\s+/g, ' ').trim();
+    if (!/[A-Za-zÀ-ú]{3}/.test(label)) return;
+    const value = parseMoney_(m[2]);
+    const ln2 = normalize_(label);
+    let kind = m[3] === 'D' ? 'discount' : 'earning';
+    if (/inss|irrf|\bir\b|imposto|desconto|plano|vale|contribuicao|previd|falta|adiantamento|consignado|sindical|coparticipacao/.test(ln2)) kind = 'discount';
+    if (/fgts/.test(ln2)) kind = 'info';
+    const key = ln2 + '|' + value;
+    if (seen[key]) return; seen[key] = 1;
+    out.items.push({ label: label, value: value, kind: kind });
+  });
+
+  // reconciliação
+  const sum = function (k) { return Math.round(out.items.filter(function (i) { return i.kind === k; }).reduce(function (a, i) { return a + i.value; }, 0) * 100) / 100; };
+  if (out.gross === null && out.items.some(function (i) { return i.kind === 'earning'; })) { out.gross = sum('earning'); out.warnings.push('Bruto calculado pela soma dos proventos encontrados.'); }
+  if (out.discounts === null && out.items.some(function (i) { return i.kind === 'discount'; })) { out.discounts = sum('discount'); out.warnings.push('Descontos calculados pela soma das linhas encontradas.'); }
+  if (out.net === null && out.gross !== null && out.discounts !== null) { out.net = Math.round((out.gross - out.discounts) * 100) / 100; out.warnings.push('Líquido calculado (bruto menos descontos).'); }
+  if (out.net === null) out.warnings.push('Não encontrei o valor líquido. Informe manualmente.');
+  if (out.gross !== null && out.discounts !== null && out.net !== null && Math.abs(out.gross - out.discounts - out.net) > 0.05) {
+    out.warnings.push('Bruto, descontos e líquido não fecham. Confira os valores.');
+  }
+  if (!out.competence) out.warnings.push('Não identifiquei a competência (mês/ano).');
+  return out;
+}
+
+
+// ============================================================
+// SETUP — rode setup() uma vez
+// ============================================================
+/**
+ * NOSSA FINANÇA — Setup.gs
+ * Rode setup() UMA vez no editor do Apps Script. É idempotente: pode rodar de novo
+ * sem apagar dados (só cria o que falta).
+ *
+ * Os tokens de acesso aparecem UMA vez em "Execução > Registros" (Logger).
+ * Só o hash fica na planilha. Guarde cada token em um gerenciador de senhas.
+ */
+
+/** Nomes iniciais. Dá para trocar depois dentro do app (Configurações). */
+const FAMILY_MEMBERS = [
+  { name: 'Eu', email: '' },
+  { name: 'Esposa', email: '' }
+];
+
+/** Categorias padrão (são configuração, não dados financeiros). [nome, tipo, ícone, cor, tag, bucket, palavras-chave] */
+const DEFAULT_CATEGORIES = [
+  ['Salário', 'income', '💼', '#12a572', 'salary', '', 'salario,folha,pagamento empresa'],
+  ['Outras receitas', 'income', '💰', '#34c38f', 'other', '', 'pix recebido,deposito,reembolso,estorno,cashback'],
+  ['Moradia', 'expense', '🏠', '#4a90e2', 'housing', 'bills', 'aluguel,condominio,iptu,financiamento imobiliario'],
+  ['Contas da casa', 'expense', '💡', '#f5a524', 'housing', 'bills', 'energia,luz,enel,cemig,cpfl,agua,sabesp,gas,internet,vivo,claro,tim,oi'],
+  ['Mercado', 'expense', '🛒', '#16a39a', 'food', 'bills', 'mercado,supermercado,carrefour,assai,atacadao,extra,pao de acucar,dia,hortifruti'],
+  ['Fast food e delivery', 'expense', '🍔', '#f0566a', 'fastfood', 'others', 'ifood,rappi,mcdonald,burger king,bk brasil,subway,kfc,habib,pizza,lanche,delivery'],
+  ['Restaurantes', 'expense', '🍽️', '#ff8a5b', 'food', 'others', 'restaurante,padaria,cafe,bar,lanchonete'],
+  ['Combustível', 'expense', '⛽', '#6c5ce7', 'fuel', 'bills', 'posto,shell,ipiranga,petrobras,br mania,combustivel,gasolina,etanol'],
+  ['Veículo', 'expense', '🚗', '#3d6ea8', 'vehicle', 'bills', 'ipva,seguro auto,mecanica,oficina,estacionamento,pedagio,sem parar,uber,99'],
+  ['Saúde', 'expense', '🩺', '#e84393', 'health', 'bills', 'farmacia,drogaria,raia,drogasil,pague menos,consulta,plano de saude,unimed'],
+  ['Educação', 'expense', '📚', '#00a8b5', 'education', 'bills', 'escola,faculdade,curso,mensalidade'],
+  ['Assinaturas', 'expense', '📺', '#a55eea', 'subscription', 'others', 'netflix,spotify,amazon prime,disney,hbo,max,youtube,icloud,google one,deezer'],
+  ['Lazer', 'expense', '🎉', '#fd9644', 'leisure', 'others', 'cinema,show,ingresso,viagem,hotel,steam,playstation'],
+  ['Compras', 'expense', '🛍️', '#e17055', 'shopping', 'others', 'amazon,mercado livre,shopee,magalu,americanas,shein,loja'],
+  ['Outros', 'expense', '🧾', '#8395a7', 'other', 'others', '']
+];
+
+function setup() {
+  const ss = db_();
+  Object.keys(SCHEMA).forEach(function (name) {
+    const cols = SCHEMA[name];
+    const sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    const header = sh.getRange(1, 1, 1, cols.length);
+    header.setValues([cols]);
+    header.setFontWeight('bold');
+    sh.setFrozenRows(1);
+    // Colunas de texto ficam como texto puro: evita datas/números convertidos e fórmulas injetadas.
+    const rows = Math.max(sh.getMaxRows() - 1, 1);
+    cols.forEach(function (c, i) {
+      if (NUM_COLS.indexOf(c) < 0 && BOOL_COLS.indexOf(c) < 0) {
+        sh.getRange(2, i + 1, rows, 1).setNumberFormat('@');
+      }
+    });
+  });
+  removeDefaultSheet_(ss);
+  seedCategories_();
+  const created = setupFamily();
+  Logger.log('Setup concluído. Abas: ' + Object.keys(SCHEMA).join(', '));
+  return created;
+}
+
+/** Cria usuários que ainda não existem e registra o token de cada um (aparece só agora). */
+function setupFamily() {
+  const users = readAll_('Users');
+  const created = [];
+  FAMILY_MEMBERS.forEach(function (m) {
+    if (users.some(function (u) { return u.name === m.name; })) return;
+    const token = newToken_();
+    const u = { id: uid_(), name: m.name, email: m.email || '', tokenHash: hash_(token), role: 'member', createdAt: iso_() };
+    insert_('Users', u);
+    created.push({ name: m.name, token: token });
+    Logger.log('TOKEN de "' + m.name + '": ' + token + '   (guarde agora, não será exibido de novo)');
+  });
+  shareFolderWithFamily_();
+  return created;
+}
+
+/** Gera token novo para todos os membros (use se perder ou vazar um token). */
+function rotateTokens() {
+  const users = readAll_('Users');
+  users.forEach(function (u) {
+    const token = newToken_();
+    const row = findRow_('Users', u.id);
+    u.tokenHash = hash_(token);
+    writeRow_('Users', row, u);
+    Logger.log('NOVO TOKEN de "' + u.name + '": ' + token);
+  });
+}
+
+function seedCategories_() {
+  if (readAll_('Categories').length) return;
+  DEFAULT_CATEGORIES.forEach(function (c) {
+    const now = iso_();
+    insert_('Categories', {
+      id: uid_(), name: c[0], type: c[1], icon: c[2], color: c[3], tag: c[4], bucket: c[5], keywords: c[6],
+      createdAt: now, updatedAt: now, archived: false
+    });
+  });
+}
+
+function removeDefaultSheet_(ss) {
+  ['Sheet1', 'Página1', 'Hoja 1'].forEach(function (n) {
+    const sh = ss.getSheetByName(n);
+    if (sh && ss.getSheets().length > 1 && sh.getLastRow() <= 1) ss.deleteSheet(sh);
+  });
+}
+
+function shareFolderWithFamily_() {
+  const emails = FAMILY_MEMBERS.map(function (m) { return m.email; }).filter(Boolean);
+  if (!emails.length) return;
+  const folder = folder_();
+  emails.forEach(function (e) { try { folder.addEditor(e); } catch (err) { Logger.log('Não foi possível compartilhar a pasta com ' + e); } });
+}

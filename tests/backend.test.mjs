@@ -1,4 +1,4 @@
-// Teste do backend (Code.gs/Setup.gs/Parsers.gs) rodando em Node com um mock em memória
+// Teste do backend (Code.gs único) rodando em Node com um mock em memória
 // de SpreadsheetApp/DriveApp/Utilities. Os dados abaixo são sintéticos e só existem neste teste.
 import vm from 'node:vm';
 import fs from 'node:fs';
@@ -49,7 +49,7 @@ const ctx = vm.createContext({
     formatDate: (d, tz, f) => { const iso = new Date(d.getTime() - 3 * 3600e3).toISOString(); return f === 'yyyy-MM' ? iso.slice(0, 7) : iso.slice(0, 10); }
   }
 });
-for (const f of ['Code.gs', 'Setup.gs', 'Parsers.gs']) vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx, { filename: f });
+for (const f of ['Code.gs']) vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx, { filename: f });
 
 const call = (action, payload = {}, token) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action, token, payload }) } }).s);
 let n = 0;
