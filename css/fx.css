@@ -179,3 +179,11 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .waves { position: absolute; }
 .goal-cup { position: relative; flex: none !important; width: 66px; text-align: center; } .goal-cup .cup { width: 66px; } .goal-pct { display: block; font: 700 .9rem var(--font-d); margin-top: -2px; }
 .goal.done { box-shadow: 0 0 0 2px var(--income), var(--shadow); }
+
+/* menu aberto no celular: o menu fica por cima de tudo e ocupa a altura toda */
+@media (max-width: 900px) {
+  .side { z-index: 60; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  body.menu-open .tabbar, body.menu-open .fab { opacity: 0; pointer-events: none; transform: translateY(20px); }
+  .tabbar, .fab { transition: opacity .25s, transform .3s; }
+  .side-backdrop { z-index: 55; }
+}
