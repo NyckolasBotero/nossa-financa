@@ -1,0 +1,38 @@
+/* responsive.css — celular e tablet. No celular o menu vira uma gaveta que abre por cima. */
+@media (max-width: 1000px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 800px) {
+  .app { padding-left: 0; }
+  .side { width: min(86vw, 290px); transform: translateX(-104%); transition: transform .34s var(--ease); box-shadow: none; }
+  .side.open { width: min(86vw, 290px); transform: none; box-shadow: 20px 0 60px rgba(0, 0, 0, .35); }
+  .nav-l, .brand-name { opacity: 1; }
+  .side-backdrop { display: block; position: fixed; inset: 0; z-index: 35; background: rgba(13, 27, 39, .5); opacity: 0; pointer-events: none; transition: opacity .3s; }
+  body.menu-open .side-backdrop { opacity: 1; pointer-events: auto; }
+  .menu-btn { display: inline-grid; }
+  .topbar { padding: 10px 14px; gap: 10px; }
+  .page-title { font-size: 1.15rem; flex: 1; margin: 0; }
+  .top-tools { width: 100%; justify-content: space-between; }
+  .seg-scope { flex: 1; } .seg-scope .seg-i { flex: 1; } .seg-scope .seg-i span { text-align: center; padding: 7px 10px; }
+  .m-label { min-width: 120px; }
+  .view { padding: 6px 14px 130px; gap: 14px; }
+  .h1 { font-size: 1.4rem; }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi { padding: 14px; min-height: 92px; } .kpi-v { font-size: 1.15rem; } .kpi.big .kpi-v { font-size: 1.35rem; } .kpi-hero .kpi-v { font-size: 1.8rem; }
+  .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card { padding: 16px; border-radius: 22px; }
+  .ent-grid, .insight-list { grid-template-columns: 1fr; }
+  .head-actions .btn { flex: 1; }
+  .fab { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .form-grid { grid-template-columns: 1fr; }
+  .modal-backdrop { align-items: flex-end; padding: 0; }
+  .modal, .modal-wide { width: 100%; max-height: 94dvh; border-radius: 28px 28px 0 0; transform: translateY(60px); }
+  .modal-b { padding: 8px 18px calc(22px + env(safe-area-inset-bottom)); }
+  .donut { justify-content: flex-start; }
+}
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .bill { grid-template-columns: auto 1fr; } .bill-r { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
+  .tx { padding: 8px 6px; gap: 10px; } .tx-amt { font-size: .95rem; }
+  .filter-grid { grid-template-columns: 1fr 1fr; }
+}

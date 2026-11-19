@@ -1,0 +1,28 @@
+<section class="page-head">
+  <div><h2 class="h1">Configurações</h2><p class="muted" id="st-ver"></p></div>
+</section>
+<div class="grid-2">
+  <article class="card">
+    <header class="card-h"><h3>Conexão e perfil</h3></header>
+    <p class="muted small">Planilha conectada</p><p class="mono" id="st-url"></p>
+    <form id="st-name-form" class="inline-form" novalidate>
+      <div class="field"><label for="st-name">Seu nome no app</label><input id="st-name" maxlength="40" autocomplete="off"></div>
+      <button class="btn btn-soft" type="submit">Salvar nome</button>
+    </form>
+    <div class="btn-row"><button id="st-sync" class="btn btn-soft" type="button">Sincronizar agora</button><button id="st-backup" class="btn btn-soft" type="button">Baixar backup (JSON)</button><button id="st-logout" class="btn btn-ghost" type="button">Desconectar</button></div>
+  </article>
+  <article class="card">
+    <header class="card-h"><h3>Apps monitorados nas notificações</h3></header>
+    <p class="muted">Lista usada pelo app auxiliar do Android para saber de quais apps ler notificações. O nome é livre; o identificador do pacote aparece no endereço do app na Play Store (depois de <code>id=</code>).</p>
+    <ul id="st-apps" class="plain"></ul>
+    <form id="st-app-form" class="inline-form" novalidate>
+      <div class="field"><label for="st-an">Nome</label><input id="st-an" name="name" maxlength="40" placeholder="Ex.: Nubank" autocomplete="off"></div>
+      <div class="field"><label for="st-ap">Pacote (Android)</label><input id="st-ap" name="package" maxlength="120" placeholder="com.exemplo.app" autocomplete="off"></div>
+      <button class="btn btn-soft" type="submit">Adicionar</button>
+    </form>
+  </article>
+</div>
+<article class="card">
+  <header class="card-h"><h3>Categorias</h3><button id="st-newcat" class="btn btn-primary sm" type="button">Nova categoria</button></header>
+  <div id="st-cats"></div>
+</article>
