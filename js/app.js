@@ -9,6 +9,7 @@ import { addMonths } from './projections.js';
 import { CONFIG } from './config.js';
 import { toggleTheme, getTheme } from './theme.js';
 import { familySvg } from './logo.js';
+import { waveSet } from './waves.js';
 import { showLoader, hideLoader, setLoaderText } from './loader.js';
 import { initRipple, initOrbs } from './fx.js';
 
@@ -16,8 +17,7 @@ const show = (el, on) => { el.hidden = !on; };
 initRipple(); initOrbs();
 
 // ---------------------------------------------------------------- acesso: entrar, criar conta, recuperar senha
-const WAVE = '<path d="M0 60C150 0 450 120 600 60C750 0 1050 120 1200 60C1350 0 1650 120 1800 60C1950 0 2250 120 2400 60V120H0Z"/>';
-const WAVES = `<div class="waves waves-page" aria-hidden="true">${[2, 3, 1].map((i) => `<svg class="wave w${i}" viewBox="0 0 2400 120" preserveAspectRatio="none">${WAVE}</svg>`).join('')}</div>`;
+const WAVES = `<div class="waves waves-page" aria-hidden="true">${waveSet()}</div>`;
 const device = () => (navigator.userAgent || '').slice(0, 60);
 const anon = (action, payload) => api.call(action, payload, { conn: { url: CONFIG.API_URL || api.getConn().url, token: '' }, anon: true });
 
@@ -115,7 +115,8 @@ function paintStatic() {
   $('#brand-logo').innerHTML = familySvg({ cls: 'logo logo-sm' });
   const themeIcons = `${icon('moon', 'i-moon')}${icon('sun', 'i-sun')}`;
   $('#theme-btn').innerHTML = themeIcons;
-  $('#theme-side').innerHTML = `<span class="theme-btn" style="width:22px;height:22px;display:inline-block;position:relative">${themeIcons}</span><span class="nav-l">Tema claro/escuro</span>`;
+  $('#theme-side').innerHTML = `${icon('moon', 'ts-moon')}${icon('sun', 'ts-sun')}<span class="nav-l">Tema claro/escuro</span>`;
+  $('#side-waves').innerHTML = waveSet();
   $$('[data-ic]').forEach((el) => { el.innerHTML = icon(el.dataset.ic); });
   $('#sync-btn').innerHTML = `${icon('sync')}<span class="nav-l">Sincronizar</span>`;
 }
@@ -176,7 +177,7 @@ function bindShell() {
     try {
       if (b.dataset.act === 'tx') (await import('./transactions.js')).openTxModal();
       if (b.dataset.act === 'paste') (await import('./notifications.js')).openPasteModal();
-      if (b.dataset.act === 'payslip') (await import('./payslip.js')).openPayslipModal();
+      if (b.dataset.act === 'payslip') (await import('./payslips.js')).openPayslipEditor();
     } catch (err) { toast(err.message, { kind: 'err' }); }
   });
 }

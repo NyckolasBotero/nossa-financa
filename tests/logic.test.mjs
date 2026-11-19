@@ -225,4 +225,37 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.ok(r3.basis === 'reserve3m' || r3.basis === 'none');
   });
 }
+{
+  // conta variável, cofre, despensa e contracheque (dados sintéticos)
+  const mk = (id, date, amount, fx) => ({ id, date, type: 'expense', amount, description: 'x', categoryId: '', accountId: 'a', ownerId: 'u', scope: 'shared', fixedBillId: fx, createdAt: date });
+  const bill = { id: 'v', name: 'Água', kind: 'expense', billType: 'variable', amount: 100, dueDay: 10, ownerId: 'u', startMonth: '2026-06', createdAt: '2026-06-01' };
+  const d = { fixedBills: [bill], transactions: [mk('1', '2026-09-10', 80, 'v'), mk('2', '2026-10-10', 120, 'v'), mk('3', '2026-11-10', 95, 'v')], goals: [], accounts: [], cards: [], categories: [] };
+  ok('conta variável: média dos meses anteriores e valor real quando paga', () => {
+    assert.deepEqual(P.billAverage(d, bill, '2026-11'), { avg: 100, count: 2 });
+    const paid = P.billsForMonth(d, '2026-11', TODAY)[0]; assert.equal(paid.bill.amount, 95); assert.equal(paid.status, 'paid');
+    const d2 = { ...d, transactions: d.transactions.slice(0, 2) };
+    const pend = P.billsForMonth(d2, '2026-11', TODAY)[0]; assert.equal(pend.bill.amount, 100); assert.equal(pend.avg, 100);
+    const fixed = P.billsForMonth({ ...d2, fixedBills: [{ ...bill, billType: 'fixed' }] }, '2026-11', TODAY)[0]; assert.equal(fixed.bill.amount, 100);
+  });
+  ok('série mês a mês das variáveis com filtro de categoria', () => {
+    const s = P.variableSeries(d, '2026-11', 6); assert.equal(s.months.length, 6); assert.equal(s.lines.length, 1);
+    assert.deepEqual(s.lines[0].values.slice(-3), [80, 120, 95]);
+    assert.equal(P.variableSeries({ ...d, fixedBills: [{ ...bill, categoryId: 'c1' }] }, '2026-11', 6, 'c2').lines.length, 0);
+  });
+  ok('cofre: meta = custo × meses, meses e dias de segurança', () => {
+    const g = { id: 'gv', kind: 'vault', target: 1, archived: false };
+    const dv = { ...d, goals: [g], transactions: [{ id: 's', date: '2026-10-01', type: 'saving', amount: 6000, goalId: 'gv', accountId: 'a', ownerId: 'u', createdAt: '2026-10-01' }] };
+    const v = P.vaultInfo(dv, TODAY, { vault: { monthlyCost: 2000, months: 6 } });
+    assert.equal(v.target, 12000); assert.equal(v.level, 0.5); assert.equal(v.monthsSafe, 3); assert.equal(v.daysSafe, 90); assert.equal(v.missing, 6000);
+    assert.equal(P.vaultInfo({ ...dv, transactions: [] }, TODAY, {}).cost.basis, 'fixed');
+    assert.equal(P.reserveGlass(dv, TODAY).saved, 0);   // dinheiro do cofre não entra no copo da reserva
+  });
+  ok('despensa: unidades, dias de estoque e validade', () => {
+    const items = [{ id: '1', name: 'Arroz', packs: 2, perPack: 5, units: 1, perPersonDay: 0.25, expiry: '2026-12-01' }, { id: '2', name: 'Sal', packs: 0, units: 3, perPersonDay: 0, expiry: '2026-11-01' }];
+    const r = P.pantryInfo(items, 4, TODAY);
+    assert.equal(P.pantryUnits(items[0]), 11); assert.equal(r.rows[0].days, 11); assert.equal(r.rows[0].status, 'soon'); assert.equal(r.rows[0].expiresIn, 12);
+    assert.equal(r.rows[1].status, 'expired'); assert.equal(r.avgDays, 11); assert.equal(r.expired, 1); assert.equal(r.soon, 1); assert.equal(r.first.it.name, 'Arroz');
+  });
+  ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
+}
 console.log(`\n${n} grupos de testes de lógica passaram.`);

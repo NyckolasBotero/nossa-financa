@@ -1,0 +1,157 @@
+/**
+ * payslips.js — contracheque mensal: itens (proventos e descontos), líquido e mês de referência.
+ * O pagamento cai no mês seguinte ao de referência (05/10 refere-se a setembro). Ao salvar, o líquido pode virar
+ * receita no extrato na data do pagamento. Dá para preencher lendo um PDF/foto (OCR do Drive) e corrigir tudo.
+ */
+import * as api from './api.js';
+import * as store from './store.js';
+import * as P from './projections.js';
+import { $, $$, h, esc, pill, emptyState, openModal, confirmDialog, toast, prepareUpload, brl, brlShort, fmtDate, monthLabel, monthShort, parseMoney, moneyInput, uuid } from './ui.js';
+import { barChart } from './charts.js';
+
+const parseItems = (ps) => { try { const a = JSON.parse(ps?.items || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+const STARTER = [{ label: 'SALÁRIO', kind: 'earning', value: null, ref: '' }, { label: 'INSS', kind: 'discount', value: null, ref: '' }];
+const sumKind = (items, kind) => P.round2(items.filter((i) => i.kind === kind).reduce((s, i) => s + (Number(i.value) || 0), 0));
+
+/** Editor de contracheque. `ps` = registro existente; `prefill` = dados lidos do arquivo. */
+export function openPayslipEditor(ps = null, prefill = null) {
+  const editing = !!ps, me = store.state.me?.id;
+  const owner0 = ps?.ownerId || (store.prefs.who !== 'family' ? store.prefs.who : me);
+  const last = !editing && store.activeOf('payslips').filter((x) => x.ownerId === owner0).sort((a, b) => (a.refMonth < b.refMonth ? 1 : -1))[0];
+  let items = (ps ? parseItems(ps) : prefill?.items?.length ? prefill.items : last ? parseItems(last).map((i) => ({ ...i })) : STARTER.map((i) => ({ ...i })));
+  const payDate0 = ps?.payDate || prefill?.payDate || store.today();
+  let refTouched = editing || !!prefill?.refMonth, netTouched = editing, attachmentIds = prefill?.attachmentIds || [];
+  const accounts = store.activeOf('accounts');
+  const linkedTx = ps?.transactionId ? store.state.transactions.find((t) => t.id === ps.transactionId) : null;
+  const clientId = uuid();
+
+  const form = h(`<form class="form ps-form" novalidate><div class="form-error" role="alert" hidden></div>
+    <div class="form-grid">
+      <div class="field"><label for="ps-owner">De quem é</label><select id="ps-owner">${store.ownerOptions().map((o) => `<option value="${esc(o.value)}" ${o.value === owner0 ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
+      <div class="field"><label for="ps-pay">Data em que caiu</label><input id="ps-pay" type="date" value="${esc(payDate0)}" required></div>
+      <div class="field"><label for="ps-ref">Mês de referência</label><input id="ps-ref" type="month" value="${esc(ps?.refMonth || prefill?.refMonth || P.refMonthOf(payDate0))}" required><small class="hint" id="ps-ref-hint"></small></div>
+      <div class="field"><label for="ps-net">Valor líquido (o que caiu)</label><input id="ps-net" inputmode="decimal" autocomplete="off" value="${esc(moneyInput(ps?.net ?? prefill?.net))}" placeholder="0,00" required><small class="hint" id="ps-net-hint"></small></div>
+      <div class="field full"><div class="ps-items-h"><b>Itens do contracheque</b><span class="grow"></span><button type="button" class="btn btn-soft sm" id="ps-read">Preencher lendo PDF/foto</button><input id="ps-file" type="file" accept="application/pdf,image/*" hidden></div>
+        <div id="ps-items" class="ps-items"></div><button type="button" class="btn btn-ghost sm" id="ps-add">+ Adicionar item</button>
+        <div class="ps-tot" id="ps-tot"></div></div>
+      ${accounts.length ? `<div class="field"><label for="ps-acc">Conta que recebeu</label><select id="ps-acc">${accounts.map((a) => `<option value="${esc(a.id)}" ${a.id === (ps?.accountId || linkedTx?.accountId) ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
+      <div class="field"><label class="check"><input type="checkbox" id="ps-launch" ${editing ? (linkedTx ? 'checked' : '') : 'checked'}><span>${linkedTx ? 'Manter o líquido lançado no extrato' : 'Lançar o líquido como receita no extrato'}</span></label></div>` : '<p class="muted full">Cadastre uma conta para poder lançar o líquido como receita.</p>'}
+      <div class="field full"><label for="ps-notes">Observações <i>(opcional)</i></label><textarea id="ps-notes" rows="2" maxlength="300">${esc(ps?.notes || '')}</textarea></div>
+    </div><div class="modal-f"><span class="grow"></span><button type="button" class="btn btn-ghost" data-cancel>Cancelar</button><button type="submit" class="btn btn-primary">${editing ? 'Salvar alterações' : 'Salvar contracheque'}</button></div></form>`);
+  const modal = openModal({ title: editing ? 'Editar contracheque' : 'Novo contracheque', body: form, wide: true });
+  const g = (id) => $(`#${id}`, form), err = $('.form-error', form);
+
+  const rowHtml = (it, i) => `<div class="ps-row" data-i="${i}"><input class="ps-l" data-k="label" value="${esc(it.label)}" placeholder="Descrição (ex.: SALÁRIO)" maxlength="60" aria-label="Descrição">
+    <select data-k="kind" aria-label="Tipo"><option value="earning" ${it.kind === 'earning' ? 'selected' : ''}>Provento</option><option value="discount" ${it.kind === 'discount' ? 'selected' : ''}>Desconto</option></select>
+    <input class="ps-r" data-k="ref" value="${esc(it.ref || '')}" placeholder="Ref." maxlength="12" aria-label="Referência">
+    <input class="ps-v" data-k="value" inputmode="decimal" value="${esc(moneyInput(it.value))}" placeholder="0,00" aria-label="Valor">
+    <button type="button" class="btn-icon sm" data-del="${i}" aria-label="Remover item">×</button></div>`;
+  const drawItems = () => { g('ps-items').innerHTML = items.map(rowHtml).join(''); totals(); };
+  function totals() {
+    const e = sumKind(items, 'earning'), d = sumKind(items, 'discount'), calc = P.round2(e - d);
+    g('ps-tot').innerHTML = `<span>Proventos <b class="pos">${esc(brl(e))}</b></span><span>Descontos <b class="neg">${esc(brl(d))}</b></span><span>Líquido calculado <b>${esc(brl(calc))}</b></span>`;
+    if (!netTouched && items.some((i) => Number(i.value))) g('ps-net').value = moneyInput(calc);
+    const net = parseMoney(g('ps-net').value);
+    g('ps-net-hint').textContent = net != null && Math.abs(net - calc) > 0.009 && items.some((i) => Number(i.value)) ? `Diferente do calculado (${brl(calc)}). Vale o que você informou.` : '';
+  }
+  const refHint = () => { const r = g('ps-ref').value; g('ps-ref-hint').textContent = r ? `Salário de ${monthLabel(r)}, pago em ${fmtDate(g('ps-pay').value)}.` : ''; };
+  drawItems(); refHint();
+
+  form.addEventListener('input', (e) => {
+    const row = e.target.closest('.ps-row');
+    if (row) { const it = items[Number(row.dataset.i)], k = e.target.dataset.k; it[k] = k === 'value' ? parseMoney(e.target.value) : e.target.value; totals(); return; }
+    if (e.target.id === 'ps-net') { netTouched = true; totals(); }
+    if (e.target.id === 'ps-ref') { refTouched = true; refHint(); }
+    if (e.target.id === 'ps-pay') { if (!refTouched && e.target.value) g('ps-ref').value = P.refMonthOf(e.target.value); refHint(); }
+  });
+  form.addEventListener('change', (e) => { const row = e.target.closest('.ps-row'); if (row && e.target.dataset.k === 'kind') { items[Number(row.dataset.i)].kind = e.target.value; totals(); } });
+  form.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-cancel]')) return modal.close();
+    const del = e.target.closest('[data-del]');
+    if (del) { items.splice(Number(del.dataset.del), 1); netTouched = netTouched; return drawItems(); }
+    if (e.target.closest('#ps-add')) { items.push({ label: '', kind: 'discount', value: null, ref: '' }); drawItems(); return g('ps-items').querySelector('.ps-row:last-child .ps-l').focus(); }
+    if (e.target.closest('#ps-read')) return g('ps-file').click();
+  });
+  g('ps-file').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const up = await prepareUpload(f);
+      const r = await api.call('payslip.parse', up, { timeout: 90000, feedback: { start: 'Lendo o contracheque…', text: 'Pode levar alguns segundos', done: 'Contracheque lido: confira os valores' } });
+      const p = r.result;
+      if (p.items?.length) { items = p.items.filter((i) => i.kind !== 'info').map((i) => ({ label: i.label, kind: i.kind, value: i.value, ref: '' })); netTouched = false; }
+      if (p.net != null) { g('ps-net').value = moneyInput(p.net); netTouched = true; }
+      if (p.competence && !refTouched) g('ps-ref').value = p.competence;
+      attachmentIds = [r.attachment.id]; drawItems(); refHint();
+      if (p.warnings?.length) toast(p.warnings[0], { kind: 'warn' });
+    } catch (ex) { toast(ex.message, { kind: 'err' }); }
+  });
+
+  const submit = async (ev) => {
+    ev.preventDefault(); err.hidden = true;
+    const btn = $('button[type=submit]', form);
+    try {
+      const net = parseMoney(g('ps-net').value);
+      if (net == null || net < 0) throw new Error('Informe o valor líquido.');
+      if (!g('ps-pay').value || !g('ps-ref').value) throw new Error('Informe a data do pagamento e o mês de referência.');
+      const clean = items.filter((i) => (i.label || '').trim() || Number(i.value)).map((i) => ({ label: String(i.label || '').trim().slice(0, 60), kind: i.kind, value: Number(i.value) || 0, ref: String(i.ref || '').trim() }));
+      const ownerId = g('ps-owner').value, refMonth = g('ps-ref').value, payDate = g('ps-pay').value;
+      const dup = store.activeOf('payslips').find((x) => x.ownerId === ownerId && x.refMonth === refMonth && x.id !== ps?.id);
+      if (dup && !(await confirmDialog({ title: 'Já existe contracheque deste mês', text: `Já há um contracheque de ${monthLabel(refMonth)} para ${store.userName(ownerId)}. Salvar mesmo assim?`, okLabel: 'Salvar mesmo assim' }))) return;
+      btn.disabled = true;
+      const earn = sumKind(clean, 'earning'), disc = sumKind(clean, 'discount');
+      const accountId = g('ps-acc')?.value || '', launch = !!g('ps-launch')?.checked && !!accountId;
+      const payload = { ownerId, payDate, refMonth, net, gross: earn, discounts: disc, items: JSON.stringify(clean).slice(0, 5900), notes: g('ps-notes').value.trim(), accountId: launch ? accountId : '' };
+      // lançamento do líquido no extrato (na data em que caiu)
+      const txBase = { amount: net, date: payDate, description: `Salário ${monthLabel(refMonth)}`, accountId, notes: `Competência ${refMonth} · Proventos ${brl(earn)} · Descontos ${brl(disc)}`.slice(0, 480), force: true };
+      const salary = store.activeOf('categories').find((x) => x.type === 'income' && x.tag === 'salary');
+      let txId = ps?.transactionId || '';
+      if (launch && linkedTx) await store.update('transactions', { id: linkedTx.id, ...txBase });
+      else if (launch) { const tx = await store.create('transactions', { type: 'income', ownerId, scope: 'individual', origin: 'payslip', categoryId: salary?.id || '', clientId, attachmentIds, ...txBase }); txId = tx.id; }
+      else if (linkedTx) { await store.remove('transactions', linkedTx.id); txId = ''; }
+      payload.transactionId = txId;
+      if (editing) await store.update('payslips', { id: ps.id, ...payload }); else await store.create('payslips', payload);
+      toast(`Contracheque de ${monthLabel(refMonth)} salvo.`, { kind: 'ok' });
+      modal.close();
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; err.scrollIntoView({ block: 'nearest' }); }
+    finally { btn.disabled = false; }
+  };
+  form.addEventListener('submit', submit);
+  return modal;
+}
+export const openPayslipModal = () => openPayslipEditor();
+
+export async function removePayslip(ps) {
+  const tx = ps.transactionId ? store.state.transactions.find((t) => t.id === ps.transactionId) : null;
+  if (!(await confirmDialog({ title: 'Excluir contracheque', text: `Contracheque de ${monthLabel(ps.refMonth)}.${tx ? ` O salário lançado no extrato (${brl(tx.amount)}) também será excluído.` : ''}`, okLabel: 'Excluir', danger: true }))) return;
+  try {
+    if (tx) await store.remove('transactions', tx.id);
+    await store.remove('payslips', ps.id);
+    toast('Contracheque excluído.', { kind: 'ok' });
+  } catch (e) { toast(e.message, { kind: 'err' }); }
+}
+
+export function render(view) {
+  const who = store.prefs.who, list = store.activeOf('payslips').filter((x) => who === 'family' || x.ownerId === who).sort((a, b) => (a.refMonth < b.refMonth ? 1 : a.refMonth > b.refMonth ? -1 : a.payDate < b.payDate ? 1 : -1));
+  const k = (l, v, cls = '', s = '') => `<div class="kpi mini"><span class="kpi-l">${l}</span><span class="kpi-v ${cls}">${esc(v)}</span>${s ? `<span class="kpi-s">${esc(s)}</span>` : ''}</div>`;
+  const last12 = list.filter((x) => x.refMonth >= P.addMonths(store.today().slice(0, 7), -12));
+  const avg = last12.length ? P.round2(last12.reduce((s, x) => s + x.net, 0) / last12.length) : 0;
+  $('#ps-kpis', view).innerHTML = list.length ? k('Último líquido', brl(list[0].net), 'pos', `Ref. ${monthLabel(list[0].refMonth)}`) + k('Média dos últimos meses', brl(avg), '', `${last12.length} ${last12.length === 1 ? 'contracheque' : 'contracheques'}`) + k('Descontos do último', brl(list[0].discounts || 0), 'neg', `Proventos ${brl(list[0].gross || 0)}`) : '';
+  const months = Array.from({ length: 12 }, (_, i) => P.addMonths(store.today().slice(0, 7), i - 11));
+  $('#ps-chart', view).innerHTML = list.length ? barChart({ labels: months.map(monthShort), series: [{ name: 'Líquido', color: 'var(--income)', values: months.map((m) => list.filter((x) => x.refMonth === m).reduce((s, x) => s + x.net, 0)) }], label: 'Líquido por mês de referência' }) : emptyState('chart', 'Sem contracheques ainda', 'Os meses aparecem aqui conforme você lança.');
+  $('#ps-list', view).innerHTML = list.length ? list.map((x) => {
+    const items = parseItems(x), tx = x.transactionId ? store.state.transactions.find((t) => t.id === x.transactionId) : null;
+    const rows = items.length ? `<table class="tbl ps-tbl"><thead><tr><th>Descrição</th><th class="num">Ref.</th><th class="num">Proventos</th><th class="num">Descontos</th></tr></thead><tbody>${items.map((i) => `<tr><td>${esc(i.label)}</td><td class="num">${esc(i.ref || '')}</td><td class="num pos">${i.kind === 'earning' ? esc(brl(i.value)) : ''}</td><td class="num neg">${i.kind === 'discount' ? esc(brl(i.value)) : ''}</td></tr>`).join('')}<tr class="tot"><td colspan="2">Total</td><td class="num">${esc(brl(x.gross || 0))}</td><td class="num">${esc(brl(x.discounts || 0))}</td></tr></tbody></table>` : '<p class="muted">Sem itens detalhados.</p>';
+    return `<article class="bill ps-card"><div class="ps-month"><b>${esc(monthLabel(x.refMonth))}</b><small>referência</small></div>
+      <div class="bill-main"><h3>Líquido ${esc(brl(x.net))}</h3><p class="muted">Caiu em ${esc(fmtDate(x.payDate))} · ${esc(store.userName(x.ownerId))}${tx ? ' · lançado no extrato' : ''}</p></div>
+      <div class="bill-r"><b class="pos">${esc(brl(x.net))}</b>${pill(`Descontos ${brlShort(x.discounts || 0)}`, 'neutral')}</div>
+      <details class="bill-det"><summary>Ver itens</summary>${rows}${x.notes ? `<p class="muted small">${esc(x.notes)}</p>` : ''}</details>
+      <div class="bill-a"><button class="btn btn-soft sm" data-edit="${esc(x.id)}">Editar</button><button class="btn btn-danger-soft sm" data-del="${esc(x.id)}">Excluir</button></div></article>`;
+  }).join('') : `<div class="card">${emptyState('doc', 'Nenhum contracheque lançado', 'Informe os itens do contracheque (ou leia o PDF/foto). O líquido vira receita na data em que caiu.', '<button class="btn btn-primary" data-new>Lançar contracheque</button>')}</div>`;
+  view.onclick = (e) => {
+    if (e.target.closest('[data-new]')) return openPayslipEditor();
+    const ed = e.target.closest('[data-edit]'), de = e.target.closest('[data-del]');
+    if (ed) return openPayslipEditor(store.byId('payslips', ed.dataset.edit));
+    if (de) return removePayslip(store.byId('payslips', de.dataset.del));
+  };
+  $('#ps-new', view).onclick = () => openPayslipEditor();
+}

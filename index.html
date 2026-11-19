@@ -29,7 +29,7 @@
   <!-- Aplicativo -->
   <div id="app" class="app" hidden>
     <aside id="side" class="side" aria-label="Menu principal">
-      <div class="waves" aria-hidden="true"><svg class="wave w2" viewBox="0 0 2400 120" preserveAspectRatio="none"><path d="M0 60C150 0 450 120 600 60C750 0 1050 120 1200 60C1350 0 1650 120 1800 60C1950 0 2250 120 2400 60V120H0Z"/></svg><svg class="wave w3" viewBox="0 0 2400 120" preserveAspectRatio="none"><path d="M0 60C150 0 450 120 600 60C750 0 1050 120 1200 60C1350 0 1650 120 1800 60C1950 0 2250 120 2400 60V120H0Z"/></svg><svg class="wave w1" viewBox="0 0 2400 120" preserveAspectRatio="none"><path d="M0 60C150 0 450 120 600 60C750 0 1050 120 1200 60C1350 0 1650 120 1800 60C1950 0 2250 120 2400 60V120H0Z"/></svg></div>
+      <div class="waves" id="side-waves" aria-hidden="true"></div>
       <div class="side-top">
         <div class="brand"><span id="brand-logo" class="brand-logo"></span><span class="brand-name">Nossa Finança</span></div>
         <button id="side-toggle" class="btn-icon side-toggle" type="button" aria-expanded="false" aria-label="Expandir menu"></button>
@@ -64,7 +64,7 @@
       <div class="fab-menu" id="fab-menu" hidden>
         <button type="button" class="fab-i" data-act="tx"><span class="fab-t">Novo lançamento</span><span class="fab-b" data-ic="plus"></span></button>
         <button type="button" class="fab-i" data-act="paste"><span class="fab-t">Colar notificação</span><span class="fab-b" data-ic="paste"></span></button>
-        <button type="button" class="fab-i" data-act="payslip"><span class="fab-t">Ler contracheque</span><span class="fab-b" data-ic="doc"></span></button>
+        <button type="button" class="fab-i" data-act="payslip"><span class="fab-t">Lançar contracheque</span><span class="fab-b" data-ic="doc"></span></button>
       </div>
       <button id="fab-btn" class="fab-btn" type="button" aria-expanded="false" aria-label="Ações rápidas"></button>
     </div>

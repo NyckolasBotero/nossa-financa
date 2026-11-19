@@ -36,6 +36,26 @@ export function openCategoryModal(cat = null) {
   return ctl;
 }
 
+/** Criação rápida de categoria (dentro de outro formulário). Devolve o id criado ou null. */
+export function askCategory(type = 'expense') {
+  return new Promise((resolve) => {
+    let done = false;
+    formModal({
+      title: type === 'income' ? 'Nova categoria de receita' : 'Nova categoria de despesa', submitLabel: 'Criar categoria', onClose: () => { if (!done) resolve(null); },
+      values: { icon: type === 'income' ? '💰' : EMOJIS[0], color: COLORS[0] },
+      fields: [
+        { name: 'name', label: 'Nome', required: true, full: true, maxlength: 40, placeholder: type === 'income' ? 'Ex.: Aluguel recebido, Freelance' : 'Ex.: Pet, Presentes' },
+        { name: 'icon', label: 'Ícone', type: 'emoji', options: EMOJIS, full: true },
+        { name: 'color', label: 'Cor', type: 'color', options: COLORS, full: true }
+      ],
+      onSubmit: async (v, c) => {
+        const rec = await store.create('categories', { name: v.name, type, icon: v.icon, color: v.color, tag: 'other', bucket: type === 'expense' ? 'others' : '', keywords: '' });
+        done = true; c.close(); resolve(rec.id);
+      }
+    });
+  });
+}
+
 /** Lista de categorias com edição e arquivamento. */
 export function renderManager(box) {
   const cats = store.activeOf('categories');

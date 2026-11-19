@@ -133,11 +133,33 @@ export function billStatus(d, b, month, today) {
   const late = today > due;
   return { status: late ? 'late' : 'pending', due, tx: null, lateDays: late ? diffDays(due, today) : 0 };
 }
+/** Conta variável: o valor muda todo mês (água, luz). O previsto é a média dos meses pagos. */
+export const isVariable = (b) => billKind(b) === 'expense' && b.billType === 'variable';
+export function billPaid(d, b, m) {
+  const v = all(d).filter((t) => t.fixedBillId === b.id && t.type === billKind(b) && ym(t.date) === m);
+  return v.length ? round2(sum(v, (t) => t.amount)) : null;
+}
+export function billAverage(d, b, month, n = 6) {
+  const vals = [];
+  for (let i = 1; i <= n; i++) { const v = billPaid(d, b, addMonths(month, -i)); if (v != null) vals.push(v); }
+  return { avg: vals.length ? round2(sum(vals, (x) => x) / vals.length) : null, count: vals.length };
+}
 export function billsForMonth(d, month, today, kind = 'expense') {
   return d.fixedBills.filter((b) => billKind(b) === kind && billApplies(b, month))
-    .map((b) => ({ bill: b, ...billStatus(d, b, month, today) })).sort((a, b) => a.due.localeCompare(b.due));
+    .map((b) => {
+      const st = billStatus(d, b, month, today);
+      if (!isVariable(b)) return { bill: b, ...st };
+      const { avg, count } = billAverage(d, b, month);
+      return { bill: { ...b, amount: st.tx ? st.tx.amount : avg ?? b.amount }, base: b, avg, avgCount: count, ...st };
+    }).sort((a, b) => a.due.localeCompare(b.due));
 }
-/** Quantas vezes a conta foi paga depois do vencimento (ou segue em aberto vencida) nos últimos meses. */
+/** Série mês a mês das contas variáveis (uma linha por conta). */
+export function variableSeries(d, endMonth, n = 12, categoryId = '') {
+  const months = Array.from({ length: n }, (_, i) => addMonths(endMonth, i - n + 1));
+  const lines = d.fixedBills.filter((b) => isVariable(b) && !b.archived && (!categoryId || b.categoryId === categoryId))
+    .map((b) => ({ bill: b, values: months.map((m) => billPaid(d, b, m)) })).filter((l) => l.values.some((v) => v != null));
+  return { months, lines };
+}
 export function lateHistory(d, b, today, back = 6) {   // vale também para receitas fixas (recebidas fora do dia)
   const cur = ym(today); let late = 0, counted = 0;
   for (let i = -back; i <= 0; i++) {
@@ -358,9 +380,47 @@ export function healthScore(d, today, txs = d.transactions) {
 
 /** Copo de reserva: quanto já foi guardado da meta (soma das metas ativas ou, sem metas, 3 meses de gastos). */
 export function reserveGlass(d, today) {
-  const saved = savedTotal(d), goalsTarget = sum(d.goals.filter((g) => !g.archived), (g) => g.target);
+  const vaultIds = new Set(d.goals.filter((g) => g.kind === 'vault').map((g) => g.id));
+  const saved = round2(savedTotal(d) - sum(all(d).filter((t) => t.type === 'saving' && vaultIds.has(t.goalId)), (t) => t.amount));
+  const goalsTarget = sum(d.goals.filter((g) => !g.archived && g.kind !== 'vault'), (g) => g.target);
   if (goalsTarget > 0) return { saved, target: goalsTarget, level: clamp01(saved / goalsTarget), basis: 'goals' };
   const cur = ym(today), exp = [1, 2, 3].map((i) => monthTotals(d, addMonths(cur, -i), d.allTx || d.transactions).expense).filter((x) => x > 0);
   if (exp.length) { const target = round2(3 * exp.reduce((a, b) => a + b, 0) / exp.length); return { saved, target, level: clamp01(saved / target), basis: 'reserve3m' }; }
   return { saved, target: 0, level: 0, basis: 'none' };
 }
+
+// ------------------------------------------------------------------ cofre de segurança (meses de custo de vida guardados)
+/** Custo de vida mensal: o que a pessoa informou, ou a média dos gastos dos últimos 3 meses (ou das contas fixas). */
+export function livingCost(d, today, settings = {}) {
+  if (settings.vault?.monthlyCost > 0) return { value: settings.vault.monthlyCost, basis: 'manual' };
+  const cur = ym(today), exp = [1, 2, 3].map((i) => monthTotals(d, addMonths(cur, -i), d.allTx || d.transactions).expense).filter((x) => x > 0);
+  if (exp.length) return { value: round2(sum(exp, (x) => x) / exp.length), basis: 'history' };
+  const fixed = sum(billsForMonth(d, cur, today), (x) => x.bill.amount);
+  return fixed > 0 ? { value: round2(fixed), basis: 'fixed' } : { value: 0, basis: 'none' };
+}
+export function vaultInfo(d, today, settings = {}) {
+  const goal = d.goals.find((g) => g.kind === 'vault' && !g.archived) || null;
+  const months = settings.vault?.months || 6, cost = livingCost(d, today, settings);
+  const target = round2(cost.value * months), saved = goal ? goalSaved(d, goal) : 0;
+  const monthsSafe = cost.value > 0 ? round2(saved / cost.value) : 0;
+  return { goal, months, cost, target, saved, level: target > 0 ? clamp01(saved / target) : 0, monthsSafe, daysSafe: Math.floor(monthsSafe * 30), missing: Math.max(0, round2(target - saved)) };
+}
+
+// ------------------------------------------------------------------ despensa
+export const pantryUnits = (it) => round2((it.packs || 0) * (it.perPack || 0) + (it.units || 0));
+export function pantryInfo(items, people, today) {
+  const rows = items.filter((i) => !i.archived).map((it) => {
+    const units = pantryUnits(it), perDay = (it.perPersonDay || 0) * people;
+    const days = perDay > 0 ? Math.floor(units / perDay) : null;
+    const left = it.expiry ? diffDays(today, it.expiry) : null;
+    return { it, units, days, expiresIn: left, status: left == null ? 'ok' : left < 0 ? 'expired' : left <= 30 ? 'soon' : 'ok', outsDays: days };
+  });
+  const withDays = rows.filter((r) => r.days != null);
+  const avg = withDays.length ? Math.floor(sum(withDays, (r) => r.days) / withDays.length) : null;
+  const first = withDays.length ? withDays.reduce((a, b) => (b.days < a.days ? b : a)) : null;
+  return { rows, avgDays: avg, first, expired: rows.filter((r) => r.status === 'expired').length, soon: rows.filter((r) => r.status === 'soon').length, count: rows.length };
+}
+
+// ------------------------------------------------------------------ contracheque
+/** Pagamento do salário cai no mês seguinte ao de referência (ex.: 05/10 refere-se a setembro). */
+export const refMonthOf = (payDate) => addMonths(ym(payDate), -1);

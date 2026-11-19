@@ -15,7 +15,7 @@
 const APP = { name: 'Nossa Finança', version: '1.0.0', folderName: 'Nossa Finança - Comprovantes' };
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const UPLOAD_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-const ALLOWED_SETTINGS = ['budgetSplit', 'monitoredApps', 'incomeBase', 'paymentMethods'];
+const ALLOWED_SETTINGS = ['budgetSplit', 'monitoredApps', 'incomeBase', 'paymentMethods', 'pantry', 'vault'];
 
 /** Esquema de cada aba (a primeira coluna é sempre o id). */
 const SCHEMA = {
@@ -24,17 +24,19 @@ const SCHEMA = {
   Accounts: ['id', 'name', 'kind', 'ownerId', 'institution', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Cards: ['id', 'name', 'kind', 'ownerId', 'limit', 'closingDay', 'dueDay', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Categories: ['id', 'name', 'type', 'icon', 'color', 'tag', 'bucket', 'keywords', 'createdAt', 'updatedAt', 'archived'],
-  FixedBills: ['id', 'name', 'amount', 'dueDay', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'startMonth', 'endMonth', 'createdAt', 'updatedAt', 'archived', 'kind', 'method'],
-  Goals: ['id', 'name', 'target', 'deadline', 'ownerId', 'scope', 'createdAt', 'updatedAt', 'archived'],
+  FixedBills: ['id', 'name', 'amount', 'dueDay', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'startMonth', 'endMonth', 'createdAt', 'updatedAt', 'archived', 'kind', 'method', 'billType'],
+  Goals: ['id', 'name', 'target', 'deadline', 'ownerId', 'scope', 'createdAt', 'updatedAt', 'archived', 'kind'],
   Transactions: ['id', 'clientId', 'date', 'type', 'amount', 'description', 'merchant', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'origin', 'fixedBillId', 'goalId', 'refMonth', 'notes', 'fingerprint', 'createdBy', 'createdAt', 'updatedAt', 'archived', 'method'],
+  Payslips: ['id', 'ownerId', 'payDate', 'refMonth', 'net', 'gross', 'discounts', 'items', 'notes', 'accountId', 'transactionId', 'createdAt', 'updatedAt', 'archived'],
+  Pantry: ['id', 'name', 'group', 'packs', 'perPack', 'units', 'unit', 'expiry', 'perPersonDay', 'notes', 'createdAt', 'updatedAt', 'archived'],
   Settings: ['key', 'value', 'updatedAt'],
   NotificationInbox: ['id', 'receivedAt', 'app', 'rawText', 'amount', 'merchant', 'institution', 'type', 'ownerId', 'suggestedCategoryId', 'status', 'fingerprint', 'transactionId', 'resolvedAt'],
   Attachments: ['id', 'transactionId', 'fileId', 'name', 'url', 'mime', 'size', 'createdAt', 'createdBy'],
   AuditLog: ['ts', 'userId', 'action', 'entity', 'entityId', 'detail']
 };
-const NUM_COLS = ['amount', 'initialBalance', 'limit', 'closingDay', 'dueDay', 'target', 'size'];
+const NUM_COLS = ['amount', 'initialBalance', 'limit', 'closingDay', 'dueDay', 'target', 'size', 'net', 'gross', 'discounts', 'packs', 'perPack', 'units', 'perPersonDay'];
 const BOOL_COLS = ['archived'];
-const DATE_COLS = ['date', 'startMonth', 'endMonth', 'deadline', 'refMonth'];
+const DATE_COLS = ['date', 'startMonth', 'endMonth', 'deadline', 'refMonth', 'payDate', 'expiry'];
 const PROTECTED = ['id', 'createdAt', 'updatedAt', 'createdBy', 'archived', 'fingerprint'];
 
 const ENUMS = {
@@ -45,7 +47,9 @@ const ENUMS = {
   scope: ['individual', 'shared'],
   txType: ['income', 'expense', 'card_payment', 'saving'],
   origin: ['manual', 'notification', 'payslip', 'fixed', 'import'],
-  billKind: ['expense', 'income']
+  billKind: ['expense', 'income'],
+  billType: ['fixed', 'variable'],
+  goalKind: ['vault']
 };
 
 /** Regras de validação: t = tipo, req = obrigatório. */
@@ -69,11 +73,23 @@ const RULES = {
     name: { t: 'str', req: 1, max: 60, l: 'Nome' }, amount: { t: 'num', req: 1, min: 0.01, l: 'Valor' },
     dueDay: { t: 'int', req: 1, min: 1, max: 31, l: 'Dia de vencimento' }, categoryId: { t: 'str' }, accountId: { t: 'str' },
     cardId: { t: 'str' }, ownerId: { t: 'str', req: 1, l: 'Responsável' }, scope: { t: 'enum', v: ENUMS.scope },
-    startMonth: { t: 'month', l: 'Mês inicial' }, endMonth: { t: 'month', l: 'Mês final' }, kind: { t: 'enum', v: ENUMS.billKind, l: 'Tipo' }, method: { t: 'str', max: 30 }
+    startMonth: { t: 'month', l: 'Mês inicial' }, endMonth: { t: 'month', l: 'Mês final' }, kind: { t: 'enum', v: ENUMS.billKind, l: 'Tipo' }, method: { t: 'str', max: 30 },
+    billType: { t: 'enum', v: ENUMS.billType, l: 'Fixa ou variável' }
   },
   Goals: {
     name: { t: 'str', req: 1, max: 60, l: 'Nome' }, target: { t: 'num', req: 1, min: 0.01, l: 'Valor da meta' },
-    deadline: { t: 'date', l: 'Prazo' }, ownerId: { t: 'str', req: 1, l: 'Responsável' }, scope: { t: 'enum', v: ENUMS.scope }
+    deadline: { t: 'date', l: 'Prazo' }, ownerId: { t: 'str', req: 1, l: 'Responsável' }, scope: { t: 'enum', v: ENUMS.scope },
+    kind: { t: 'enum', v: ENUMS.goalKind }
+  },
+  Payslips: {
+    ownerId: { t: 'str', req: 1, l: 'De quem é' }, payDate: { t: 'date', req: 1, l: 'Data do pagamento' }, refMonth: { t: 'month', req: 1, l: 'Mês de referência' },
+    net: { t: 'num', req: 1, min: 0, l: 'Valor líquido' }, gross: { t: 'num', min: 0, l: 'Total de proventos' }, discounts: { t: 'num', min: 0, l: 'Total de descontos' },
+    items: { t: 'str', max: 6000, l: 'Itens' }, notes: { t: 'str', max: 300, l: 'Observações' }, accountId: { t: 'str' }, transactionId: { t: 'str' }
+  },
+  Pantry: {
+    name: { t: 'str', req: 1, max: 60, l: 'Nome' }, group: { t: 'str', max: 30, l: 'Grupo' }, packs: { t: 'num', min: 0, l: 'Fardos' }, perPack: { t: 'num', min: 0, l: 'Unidades por fardo' },
+    units: { t: 'num', min: 0, l: 'Unidades avulsas' }, unit: { t: 'str', max: 12, l: 'Unidade' }, expiry: { t: 'date', l: 'Validade' },
+    perPersonDay: { t: 'num', min: 0, l: 'Consumo por pessoa por dia' }, notes: { t: 'str', max: 200, l: 'Observações' }
   },
   Transactions: {
     clientId: { t: 'str', max: 60 }, date: { t: 'date', req: 1, l: 'Data' }, type: { t: 'enum', v: ENUMS.txType, req: 1, l: 'Tipo' },
@@ -84,7 +100,7 @@ const RULES = {
   }
 };
 
-const ENT = { account: 'Accounts', card: 'Cards', category: 'Categories', fixedBill: 'FixedBills', goal: 'Goals' };
+const ENT = { account: 'Accounts', card: 'Cards', category: 'Categories', fixedBill: 'FixedBills', goal: 'Goals', payslip: 'Payslips', pantryItem: 'Pantry' };
 
 /** Tabela de ações: nome -> [função, escreve?]. */
 const ACTIONS = {
@@ -110,7 +126,8 @@ const ACTIONS = {
   'attachment.remove': [attachmentRemove_, true],
   'payslip.parse': [payslipParse_, true],
   'report.monthly': [reportMonthly_, false],
-  'indicators.get': [indicatorsGet_, false]
+  'indicators.get': [indicatorsGet_, false],
+  'news.get': [newsGet_, false]
 };
 Object.keys(ENT).forEach(function (k) {
   const sheet = ENT[k];
@@ -338,10 +355,30 @@ function db_() {
   const id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
   return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
 }
+const ensured_ = {};
 function sheet_(name) {
-  const sh = db_().getSheetByName(name);
+  const ss = db_();
+  let sh = ss.getSheetByName(name);
+  const cols = SCHEMA[name];
+  if (!ensured_[name]) {
+    // Autoajuste: abas/colunas novas (de versões mais recentes do código) são criadas sozinhas, sem rodar setup() de novo.
+    if (!sh && cols && (ss.getSheetByName('Transactions') || ss.getSheetByName('Acessos'))) { sh = ss.insertSheet(name); formatSheet_(sh, cols, 0); }
+    else if (sh && cols && sh.getLastColumn() < cols.length) { const from = sh.getLastColumn(); formatSheet_(sh, cols, from); }
+    if (sh) ensured_[name] = 1;
+  }
   if (!sh) throw fail_('NOT_SETUP', 'Planilha não preparada. Rode setup() no Apps Script.');
   return sh;
+}
+/** Cabeçalho + formato de texto nas colunas novas (a partir de fromIdx). */
+function formatSheet_(sh, cols, fromIdx) {
+  const header = sh.getRange(1, 1, 1, cols.length);
+  header.setValues([cols]);
+  header.setFontWeight('bold');
+  sh.setFrozenRows(1);
+  const rows = Math.max(sh.getMaxRows() - 1, 1);
+  cols.forEach(function (c, i) {
+    if (i >= fromIdx && NUM_COLS.indexOf(c) < 0 && BOOL_COLS.indexOf(c) < 0) sh.getRange(2, i + 1, rows, 1).setNumberFormat('@');
+  });
 }
 function readAll_(name) {
   const sh = sheet_(name), n = sh.getLastRow();
@@ -444,7 +481,8 @@ function ownerOrFail_(id, allowFamily) {
 
 function crossCheck_(name, o) {
   if (name === 'Accounts' || name === 'Cards') ownerOrFail_(o.ownerId, true);
-  if (name === 'FixedBills' || name === 'Goals') ownerOrFail_(o.ownerId, false);
+  if (name === 'FixedBills' || name === 'Goals' || name === 'Payslips') ownerOrFail_(o.ownerId, false);
+  if (name === 'Payslips' && o.accountId) activeOrFail_('Accounts', o.accountId, 'Conta');
   if (name === 'FixedBills') {
     const kind = o.kind || 'expense';
     if (o.categoryId) { const cat = activeOrFail_('Categories', o.categoryId, 'Categoria'); if (cat.type !== kind) throw fail_('VALIDATION', 'A categoria não combina com o tipo (receita/despesa).'); }
@@ -476,6 +514,7 @@ function create_(name, input, user) {
   const o = pick_(name, input);
   if (name === 'Categories' && o.bucket === undefined) o.bucket = '';
   if (name === 'FixedBills' && !o.kind) o.kind = 'expense';
+  if (name === 'FixedBills' && !o.billType) o.billType = 'fixed';
   validate_(name, o, false);
   crossCheck_(name, o); dupName_(name, o);
   const now = iso_();
@@ -513,7 +552,7 @@ function bootstrap_(p, user) {
     serverTime: iso_(), me: publicUser_(user), since: since,
     users: activeUsers_(),
     accounts: readAll_('Accounts'), cards: readAll_('Cards'), categories: readAll_('Categories'),
-    fixedBills: readAll_('FixedBills'), goals: readAll_('Goals'), settings: settings_(),
+    fixedBills: readAll_('FixedBills'), goals: readAll_('Goals'), payslips: readAll_('Payslips'), pantry: readAll_('Pantry'), settings: settings_(),
     transactions: readAll_('Transactions').filter(function (t) { return !t.archived && (!since || t.date >= since); }),
     inboxCounts: inboxCounts_()
   };
@@ -524,7 +563,7 @@ function sync_(p) {
   const changed = function (n) { return readAll_(n).filter(function (x) { return String(x.updatedAt) > since; }); };
   return {
     serverTime: iso_(), accounts: changed('Accounts'), cards: changed('Cards'), categories: changed('Categories'),
-    fixedBills: changed('FixedBills'), goals: changed('Goals'), transactions: changed('Transactions'),
+    fixedBills: changed('FixedBills'), goals: changed('Goals'), payslips: changed('Payslips'), pantry: changed('Pantry'), transactions: changed('Transactions'),
     users: activeUsers_(), settings: settings_(), inboxCounts: inboxCounts_()
   };
 }
@@ -690,6 +729,18 @@ function settingsSave_(p, user) {
         const key = x.toLowerCase(); if (!x || seen[key]) return false; seen[key] = 1; return true;
       });
     }
+    if (k === 'pantry') {
+      const pe = Number(v && v.people);
+      if (!isFinite(pe) || pe < 1 || pe > 30) throw fail_('VALIDATION', 'Número de pessoas inválido (1 a 30).');
+      values[k] = { people: Math.round(pe * 10) / 10 };
+    }
+    if (k === 'vault') {
+      const mc = v && v.monthlyCost !== null && v.monthlyCost !== '' && v.monthlyCost !== undefined ? Number(v.monthlyCost) : null;
+      const mo = Number(v && v.months);
+      if (mc !== null && (!isFinite(mc) || mc <= 0)) throw fail_('VALIDATION', 'Custo de vida inválido.');
+      if (!isFinite(mo) || mo < 1 || mo > 24 || Math.floor(mo) !== mo) throw fail_('VALIDATION', 'Meses de segurança inválidos (1 a 24).');
+      values[k] = { monthlyCost: mc === null ? null : Math.round(mc * 100) / 100, months: mo };
+    }
     if (k === 'monitoredApps') {
       if (!Array.isArray(v) || v.length > 50) throw fail_('VALIDATION', 'Lista de apps inválida.');
       values[k] = v.map(function (a) { return { name: String(a.name || '').slice(0, 40), package: String(a.package || '').slice(0, 120) }; })
@@ -701,6 +752,44 @@ function settingsSave_(p, user) {
   });
   audit_(user, 'save', 'Settings', Object.keys(values).join(','));
   return settings_();
+}
+
+// ---------------------------------------------------------------- notícias (Google Notícias via RSS, em cache)
+
+const NEWS_GROUPS_ = [
+  { id: 'brasil', label: 'Brasil: juros, inflação e câmbio', q: 'Selic OR juros OR inflação OR dólar OR "custo de vida" OR "preço dos alimentos" OR tarifa when:3d' },
+  { id: 'mundo', label: 'Mundo: alertas e economia global', q: 'economia global OR recessão OR "bolsas mundiais" OR petróleo OR "banco central" OR "alerta econômico" when:3d' }
+];
+function xmlText_(s) {
+  return String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&').replace(/<[^>]+>/g, '').trim();
+}
+function parseRss_(xml, limit) {
+  const items = [], re = /<item>([\s\S]*?)<\/item>/g;
+  let m;
+  while ((m = re.exec(xml)) && items.length < limit) {
+    const tag = function (t) { const x = new RegExp('<' + t + '[^>]*>([\\s\\S]*?)<\\/' + t + '>').exec(m[1]); return x ? xmlText_(x[1]) : ''; };
+    let title = tag('title'); const source = tag('source');
+    if (source && title.slice(-(source.length + 3)) === ' - ' + source) title = title.slice(0, -(source.length + 3));
+    const link = tag('link');
+    if (title && /^https?:\/\//.test(link)) items.push({ title: title.slice(0, 180), link: link, source: source.slice(0, 40), date: tag('pubDate') });
+  }
+  return items;
+}
+function newsGet_() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('news:v1');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* refaz */ } }
+  const groups = NEWS_GROUPS_.map(function (g) {
+    let items = [];
+    try {
+      const res = UrlFetchApp.fetch('https://news.google.com/rss/search?q=' + encodeURIComponent(g.q) + '&hl=pt-BR&gl=BR&ceid=BR:pt-419', { muteHttpExceptions: true });
+      if (res.getResponseCode() === 200) items = parseRss_(res.getContentText(), 6);
+    } catch (e) { /* sem rede ou sem permissão: devolve vazio */ }
+    return { id: g.id, label: g.label, items: items };
+  });
+  const out = { updatedAt: iso_(), groups: groups };
+  if (groups.some(function (g) { return g.items.length; })) cache.put('news:v1', JSON.stringify(out), 1800);
+  return out;
 }
 
 // ---------------------------------------------------------------- fila de notificações
@@ -1049,17 +1138,9 @@ function setup() {
   Object.keys(SCHEMA).forEach(function (name) {
     const cols = SCHEMA[name];
     const sh = ss.getSheetByName(name) || ss.insertSheet(name);
-    const header = sh.getRange(1, 1, 1, cols.length);
-    header.setValues([cols]);
-    header.setFontWeight('bold');
-    sh.setFrozenRows(1);
     // Colunas de texto ficam como texto puro: evita datas/números convertidos e fórmulas injetadas.
-    const rows = Math.max(sh.getMaxRows() - 1, 1);
-    cols.forEach(function (c, i) {
-      if (NUM_COLS.indexOf(c) < 0 && BOOL_COLS.indexOf(c) < 0) {
-        sh.getRange(2, i + 1, rows, 1).setNumberFormat('@');
-      }
-    });
+    formatSheet_(sh, cols, 0);
+    ensured_[name] = 1;
   });
   removeDefaultSheet_(ss);
   seedCategories_();

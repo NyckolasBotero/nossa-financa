@@ -37,6 +37,8 @@ const ICONS = {
   sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.300v2.200M2.500 12h2.200M19.300 12h2.200M5.300 5.300l1.600 1.600M17.100 17.100l1.600 1.600M5.300 18.700l1.600-1.600M17.100 6.900l1.600-1.600"/>',
   moon: '<path d="M20 14.500A8.500 8.500 0 0 1 9.500 4a8.500 8.500 0 1 0 10.500 10.500z"/>',
   wallet: '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18v3"/><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="16.5" cy="13.5" r="1.2"/>',
+  safe: '<rect x="3" y="4" width="18" height="15" rx="3"/><circle cx="12" cy="11.500" r="3.500"/><circle cx="12" cy="11.500" r=".8"/><path d="M7 19v2M17 19v2"/>',
+  basket: '<path d="M3 10h18l-1.800 9a2 2 0 0 1-2 1.600H6.800a2 2 0 0 1-2-1.600z"/><path d="m8 10 3-6M16 10l-3-6M9 14v3M12 14v3M15 14v3"/>',
   paste: '<rect x="6" y="5" width="12" height="16" rx="2.5"/><path d="M9 5V3.5h6V5M9 11h6M9 15h4"/>'
 };
 export const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;

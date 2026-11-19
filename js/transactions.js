@@ -4,6 +4,7 @@
 import * as api from './api.js';
 import * as store from './store.js';
 import * as P from './projections.js';
+import { askCategory } from './categories.js';
 import { $, $$, h, esc, icon, drop, pill, emptyState, expander, formModal, confirmDialog, toast, prepareUpload, brl, dayLabel, monthLabel, uuid, debounce, amountClass } from './ui.js';
 
 const TYPE_LABEL = { income: 'Receita', expense: 'Despesa', card_payment: 'Fatura paga', saving: 'Valor guardado' };
@@ -105,7 +106,7 @@ export function render(view) {
   draw();
 
   $('#ex-new', view).addEventListener('click', () => openTxModal());
-  $('#ex-payslip', view).addEventListener('click', async () => (await import('./payslip.js')).openPayslipModal());
+  $('#ex-payslip', view).addEventListener('click', async () => (await import('./payslips.js')).openPayslipEditor());
   $('#ex-list', view).addEventListener('click', (e) => {
     if (e.target.closest('[data-more]')) { shown += 150; draw(); return; }
     const row = e.target.closest('.tx'); if (!row) return;
@@ -167,7 +168,7 @@ export function openTxModal(initial = {}, opts = {}) {
     { name: 'description', label: 'Descrição', placeholder: 'Ex.: Padaria, Salário...', full: true, required: true },
     { name: 'source', label: 'Conta ou cartão', type: 'select', options: sources(t0), required: true },
     { name: 'method', label: 'Paga com', type: 'select', options: store.methodOptions(), placeholder: 'Não informar' },
-    { name: 'categoryId', label: 'Categoria', type: 'select', options: store.categoryOptions(t0), placeholder: 'Sem categoria' },
+    { name: 'categoryId', label: 'Categoria', type: 'select', options: store.categoryOptions(t0, { withNew: true }), placeholder: 'Sem categoria' },
     { name: 'ownerId', label: 'Responsável', type: 'select', options: store.ownerOptions(), required: true },
     { name: 'scope', label: 'Tipo de gasto', type: 'segmented', options: [{ value: 'individual', label: 'Individual' }, { value: 'shared', label: 'Compartilhado' }] },
     ...(hasBills() ? [{ name: 'fixedBillId', label: 'Vincular a conta/receita fixa', type: 'select', full: true, placeholder: 'Não é fixa', options: billOpts(t0), showIf: (v) => billsOf(v.type).length > 0 }] : []),
@@ -198,7 +199,7 @@ export function openTxModal(initial = {}, opts = {}) {
       if (special) return;
       if (name === 'type') {
         const t = c.values().type;
-        c.setOptions('categoryId', store.categoryOptions(t), 'Sem categoria');
+        c.setOptions('categoryId', store.categoryOptions(t, { withNew: true }), 'Sem categoria');
         c.setOptions('source', sources(t));
         if (hasBills()) c.setOptions('fixedBillId', billOpts(t), 'Não é fixa');
         c.setOptions('method', store.methodOptions(), 'Não informar');
@@ -206,6 +207,11 @@ export function openTxModal(initial = {}, opts = {}) {
       if (name === 'source') {   // compra no cartão de crédito: sugere "Crédito" se ainda não escolheram outra
         const [k, id] = (c.values().source || ':').split(':');
         if (k === 'c' && store.byId('cards', id)?.kind === 'credit' && !c.values().method) c.set('method', store.paymentMethods().find((m) => /cr[eé]dito/i.test(m)) || '');
+      }
+      if (name === 'categoryId' && c.values().categoryId === store.NEW_CAT) {
+        c.set('categoryId', '');
+        const id = await askCategory(c.values().type || t0);
+        if (id) { c.setOptions('categoryId', store.categoryOptions(c.values().type || t0, { withNew: true }), 'Sem categoria'); c.set('categoryId', id); }
       }
       if (name === 'method' && c.values().method === store.NEW_METHOD) {
         c.set('method', '');
@@ -218,7 +224,7 @@ export function openTxModal(initial = {}, opts = {}) {
       if (special) payload = { amount: v.amount, date: v.date, description: v.description, ownerId: v.ownerId, notes: v.notes };
       else {
         const [kind, id] = (v.source || ':').split(':');
-        payload = { type: v.type, amount: v.amount, date: v.date, description: v.description, merchant: initial.merchant || '', categoryId: v.categoryId || '',
+        payload = { type: v.type, amount: v.amount, date: v.date, description: v.description, merchant: initial.merchant || '', categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '',
           accountId: kind === 'a' ? id : '', cardId: kind === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, fixedBillId: v.fixedBillId || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', notes: v.notes };
         if (!editing) payload.origin = initial.origin || (v.fixedBillId ? 'fixed' : 'manual');
       }

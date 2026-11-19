@@ -8,6 +8,14 @@ import { $, esc, icon, drop, pill, emptyState, brl, brlShort, fmtDate, monthShor
 import { barChart, donutChart, areaChart, gauge, cup, bar } from './charts.js';
 import { insightsFor, insightCard } from './insights-view.js';
 import { txRow } from './transactions.js';
+import { vaultSummary } from './vault.js';
+import { pantrySummary, people } from './pantry.js';
+import { renderVariableChart } from './varchart.js';
+import { safe } from './charts.js';
+import { verseOfDay } from './verses.js';
+import { loadNews, ago } from './news.js';
+
+let verseShift = 0, newsTab = 0;
 
 const kpi = ({ l, v, s = '', tone = 'brand', href = '', big = false, ic = '' }) =>
   `<${href ? `a href="${href}"` : 'div'} class="kpi tone-${tone} ${big ? 'big' : ''}"><span class="kpi-l">${esc(l)}</span><span class="kpi-v">${esc(v)}</span>${s ? `<span class="kpi-s">${esc(s)}</span>` : ''}</${href ? 'a' : 'div'}>`;
@@ -41,6 +49,37 @@ export function render(view) {
     <article class="card"><header class="card-h"><h3>Copo da reserva</h3><a class="muted small" href="#/goals">Metas</a></header>
       <div class="cup-wrap">${cup(glass.level, { label: 'Reserva' })}
       <div class="cup-info"><span class="cup-pct">${Math.round(glass.level * 100)}%</span><b>${esc(brl(glass.saved))} guardados</b>${basisText ? `<span class="muted">${esc(basisText)}</span>` : '<span class="muted">Crie uma meta (ou guarde dinheiro) e o copo começa a encher.</span>'}${glass.level >= 1 ? pill('Copo cheio! Meta atingida', 'ok') : ''}<a class="btn btn-soft sm" href="#/goals">Guardar dinheiro</a></div></div></article>`;
+
+  // cofre de segurança + despensa
+  const vt = vaultSummary(), pt = pantrySummary();
+  const vtTone = vt.cost.value <= 0 ? 'muted' : vt.monthsSafe >= vt.months ? 'ok' : vt.monthsSafe >= vt.months / 2 ? 'warn' : 'over';
+  $('#db-safety', view).innerHTML = `<article class="card"><header class="card-h"><h3>Cofre de segurança</h3><a class="muted small" href="#/vault">Abrir</a></header>
+      ${vt.cost.value > 0 ? `<div class="cup-wrap">${safe(vt.level, { label: 'Cofre' })}<div class="cup-info"><span class="cup-pct">${vt.monthsSafe.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} <small>meses</small></span><b>${vt.daysSafe} dias de segurança</b><span class="muted">${esc(brl(vt.saved))} de ${esc(brl(vt.target))} (${vt.months} meses de custo de vida)</span>${bar(vt.level, vtTone)}</div></div>`
+        : emptyState('wallet', 'Cofre de 6 meses', 'Informe o custo de vida da família e acompanhe quanto falta para a reserva de segurança.', '<a class="btn btn-primary" href="#/vault">Configurar cofre</a>')}</article>
+    <article class="card"><header class="card-h"><h3>Despensa</h3><a class="muted small" href="#/pantry">Abrir</a></header>
+      ${pt.count ? `<div class="pantry-sum"><div><span class="cup-pct">${pt.avgDays != null ? pt.avgDays : '—'} <small>dias</small></span><b>de comida em casa</b><span class="muted">${esc(people().toLocaleString('pt-BR'))} ${people() === 1 ? 'pessoa' : 'pessoas'} · ${pt.count} itens</span></div>
+        <ul class="pantry-alerts">${pt.first ? `<li>Acaba primeiro: <b>${esc(pt.first.it.name)}</b> (${pt.first.days} dias)</li>` : ''}<li class="${pt.expired ? 'bad' : ''}">${pt.expired} vencido${pt.expired === 1 ? '' : 's'}</li><li class="${pt.soon ? 'warn' : ''}">${pt.soon} vencendo em 30 dias</li></ul></div>`
+        : emptyState('wallet', 'Controle sua despensa', 'Cadastre os alimentos, a validade e o consumo da família para saber quantos dias a comida dura.', '<a class="btn btn-primary" href="#/pantry">Cadastrar alimentos</a>')}</article>`;
+
+  // versículo do dia + notícias
+  const verse = () => verseOfDay(today, verseShift);
+  const drawVerse = () => { const [ref, txt] = verse(); $('#db-verse', view).innerHTML = `<blockquote class="verse"><p>“${esc(txt)}”</p><footer>${esc(ref)} · ARC</footer></blockquote>`; };
+  $('#db-word', view).innerHTML = `<article class="card verse-card"><header class="card-h"><h3>Palavra para o dia</h3><button class="btn btn-ghost sm" id="db-verse-next" type="button">Outro versículo</button></header><div id="db-verse"></div></article>
+    <article class="card news-card"><header class="card-h"><h3>Notícias que afetam o bolso</h3><div class="seg seg-mini" id="db-news-tabs"></div></header><div id="db-news"><p class="muted">Carregando notícias…</p></div></article>`;
+  drawVerse();
+  $('#db-verse-next', view).onclick = () => { verseShift++; drawVerse(); };
+  const drawNews = (r) => {
+    const box = $('#db-news', view); if (!box) return;
+    const gs = r?.groups || [];
+    if (!gs.some((g) => g.items.length)) { box.innerHTML = '<p class="muted">Não consegui carregar as notícias agora. Confira se o Code.gs novo está implantado (com permissão de acesso externo) e tente de novo mais tarde.</p>'; $('#db-news-tabs', view).innerHTML = ''; return; }
+    newsTab = Math.min(newsTab, gs.length - 1);
+    $('#db-news-tabs', view).innerHTML = gs.map((g, i) => `<label class="seg-i"><input type="radio" name="nt" value="${i}" ${i === newsTab ? 'checked' : ''}><span>${esc(g.id === 'brasil' ? 'Brasil' : 'Mundo')}</span></label>`).join('');
+    box.innerHTML = `<p class="muted small">${esc(gs[newsTab].label)}</p><ul class="news-list">${gs[newsTab].items.map((n) => `<li><a href="${esc(n.link)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a><small>${esc(n.source)}${n.date ? ` · ${esc(ago(n.date))}` : ''}</small></li>`).join('')}</ul>`;
+    $('#db-news-tabs', view).onchange = (e) => { newsTab = Number(e.target.value); drawNews(r); };
+  };
+  loadNews().then(drawNews).catch(() => drawNews(null));
+
+  $('#db-var', view) && renderVariableChart($('#db-var', view));
 
   const tot = P.monthTotals(d, month), bills = P.billsForMonth(d, month, today);
   const pend = bills.filter((x) => x.status === 'pending'), late = bills.filter((x) => x.status === 'late');

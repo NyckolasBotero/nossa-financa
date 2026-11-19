@@ -8,7 +8,7 @@ import { scoped } from './projections.js';
 import { currentMonth, todayISO } from './format.js';
 
 export const state = {
-  loaded: false, me: null, users: [], accounts: [], cards: [], categories: [], fixedBills: [], goals: [],
+  loaded: false, me: null, users: [], accounts: [], cards: [], categories: [], fixedBills: [], goals: [], payslips: [], pantry: [],
   settings: {}, transactions: [], inboxCounts: { pending: 0, rejected: 0 }, serverTime: ''
 };
 
@@ -38,7 +38,7 @@ export function data() {
   return d;
 }
 
-const KIND = { transactions: 'tx', accounts: 'account', cards: 'card', categories: 'category', fixedBills: 'fixedBill', goals: 'goal' };
+const KIND = { transactions: 'tx', accounts: 'account', cards: 'card', categories: 'category', fixedBills: 'fixedBill', goals: 'goal', payslips: 'payslip', pantry: 'pantryItem' };
 
 export function upsert(kind, rec) {
   const list = state[kind];
@@ -82,9 +82,11 @@ function fb(kind, verb, p = {}) {
     if (verb === 'update') return { start: 'Salvando alterações…', done: () => ['Lançamento atualizado', sub] };
     return { start: 'Excluindo lançamento…', done: 'Lançamento excluído' };
   }
-  const N = { accounts: ['conta', 'Conta', 'f'], cards: ['cartão', 'Cartão', 'm'], categories: ['categoria', 'Categoria', 'f'], goals: ['meta', 'Meta', 'f'] };
+  const N = { accounts: ['conta', 'Conta', 'f'], cards: ['cartão', 'Cartão', 'm'], categories: ['categoria', 'Categoria', 'f'], goals: ['meta', 'Meta', 'f'], payslips: ['contracheque', 'Contracheque', 'm'], pantry: ['item da despensa', 'Item da despensa', 'm'] };
   let [low, cap, g] = N[kind] || ['registro', 'Registro', 'm'];
-  if (kind === 'fixedBills') { [low, cap, g] = p.kind === 'income' ? ['receita fixa', 'Receita fixa', 'f'] : ['conta fixa', 'Conta fixa', 'f']; }
+  if (kind === 'fixedBills') { [low, cap, g] = p.kind === 'income' ? ['receita fixa', 'Receita fixa', 'f'] : p.billType === 'variable' ? ['conta variável', 'Conta variável', 'f'] : ['conta fixa', 'Conta fixa', 'f']; }
+  if (kind === 'goals' && p.kind === 'vault') [low, cap, g] = ['cofre de segurança', 'Cofre de segurança', 'm'];
+  if (verb === 'remove' && (kind === 'payslips' || kind === 'pantry')) return { start: `Excluindo ${low}…`, done: `${cap} excluído` };
   const ed = g === 'f' ? 'criada' : 'criado', sv = g === 'f' ? 'atualizada' : 'atualizado', ar = g === 'f' ? 'arquivada' : 'arquivado';
   if (verb === 'create') return { start: `Criando ${low}…`, text: what, done: () => [`${cap} ${ed}`, what] };
   if (verb === 'update') return { start: `Salvando ${low}…`, text: what, done: () => [`${cap} ${sv}`, what] };
@@ -129,7 +131,8 @@ export function sourceOptions({ type = 'expense' } = {}) {
   }
   return opts;
 }
-export const categoryOptions = (type) => activeOf('categories').filter((c) => c.type === type).map((c) => ({ value: c.id, label: `${c.icon || ''} ${c.name}`.trim() }));
+export const NEW_CAT = '__newcat__';
+export const categoryOptions = (type, { withNew = false } = {}) => [...activeOf('categories').filter((c) => c.type === type).map((c) => ({ value: c.id, label: `${c.icon || ''} ${c.name}`.trim() })), ...(withNew ? [{ value: NEW_CAT, label: '＋ Nova categoria…' }] : [])];
 export const sourceLabel = (t) => (t.accountId ? byId('accounts', t.accountId)?.name : t.cardId ? byId('cards', t.cardId)?.name : '') || '';
 
 // ---- forma de pagamento (Pix, Débito, Crédito + as que a pessoa criar)
@@ -141,6 +144,9 @@ export async function addMethod(name) {
   const n = String(name || '').trim().slice(0, 30);
   if (!n) throw new Error('Informe o nome.');
   if (paymentMethods().some((m) => m.toLowerCase() === n.toLowerCase())) return paymentMethods().find((m) => m.toLowerCase() === n.toLowerCase());
-  await saveSettings({ paymentMethods: [...paymentMethods(), n] });
+  try { await saveSettings({ paymentMethods: [...paymentMethods(), n] }); } catch (e) {
+    if (/desconhecida/i.test(e.message || '')) throw new Error('O backend ainda é a versão antiga. Cole o novo Code.gs no Apps Script e crie uma nova versão da implantação.');
+    throw e;
+  }
   return n;
 }

@@ -20,6 +20,7 @@ function colRange(sh, r, c, nr, nc) {
 const mkSheet = (name) => ({
   name, rows: [],
   getLastRow() { return this.rows.length; }, getMaxRows() { return 1000; },
+  getLastColumn() { return Math.max(0, ...this.rows.map((r) => r.length)); },
   getRange(r, c, nr = 1, nc = 1) { return colRange(this, r, c, nr, nc); },
   appendRow(a) { this.rows.push(a); }, setFrozenRows() {},
   deleteRow(i) { this.rows.splice(i - 1, 1); }
@@ -31,6 +32,7 @@ const ss = {
   getSheets: () => Object.values(sheets), deleteSheet() {}
 };
 const files = {};
+const RSS = (u) => `<rss><channel>${[1, 2, 3].map((i) => `<item><title><![CDATA[Selic sobe ${i} - Jornal X]]></title><link>https://exemplo.com/n${i}</link><pubDate>Thu, 19 Nov 2026 10:00:00 GMT</pubDate><source url="https://x">Jornal X</source></item>`).join('')}</channel></rss>`;
 const folder = { createFile(blob) { const id = 'f' + Object.keys(files).length; files[id] = blob; return { getId: () => id, getUrl: () => 'https://drive/' + id, setTrashed() {} }; }, addEditor() {} };
 
 const ctx = vm.createContext({
@@ -42,6 +44,7 @@ const ctx = vm.createContext({
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ s, setMimeType() { return this; } }) },
   SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+  UrlFetchApp: { fetch: (u) => ({ getResponseCode: () => 200, getContentText: () => RSS(u) }) },
   DriveApp: { getFoldersByName: () => ({ hasNext: () => false }), createFolder: () => folder, getFileById: () => ({ setTrashed() {} }) },
   Utilities: {
     getUuid: () => crypto.randomUUID(),
@@ -65,8 +68,8 @@ ctx.umCreate({ usuario: 'esposa', nome: 'Esposa', perfil: 'membro', senha: 'outr
 const login = (username, password) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'auth.login', payload: { username, password } }) } }).s);
 const meTok = login('marido', 'senha-forte-1').data.token;
 let wifeTok = login('esposa', 'outra-senha-2').data.token;
-ok('setup cria 12 abas e categorias padrão; senha nunca fica em texto puro', () => {
-  assert.equal(Object.keys(sheets).length, 12);
+ok('setup cria 14 abas e categorias padrão; senha nunca fica em texto puro', () => {
+  assert.equal(Object.keys(sheets).length, 14);
   assert.equal(sheets.Categories.rows.length, 1 + 15);
   const dump = JSON.stringify(sheets.Acessos.rows) + JSON.stringify(sheets.Sessoes.rows);
   assert.ok(!dump.includes('senha-forte-1') && !dump.includes('outra-senha-2'), 'senha em texto puro');
@@ -316,4 +319,58 @@ ok('formas de pagamento: lista salva, sem duplicar e limpa', () => {
   assert.deepEqual(r.data.paymentMethods, ['Pix', 'Boleto', 'Débito']);
   assert.equal(call('settings.save', { values: { paymentMethods: 'x' } }, meTok).error.code, 'VALIDATION');
 });
+
+
+// ---- contracheque, despensa, cofre, fixa/variável, notícias, autoajuste de abas
+{
+  const a = call('account.create', { name: 'Conta teste', kind: 'checking', ownerId: me.id, initialBalance: 0 }, meTok).data;
+  const ps = call('payslip.create', { ownerId: me.id, payDate: '2026-10-05', refMonth: '2026-09', net: 2114.62, gross: 3580.56, discounts: 1465.94, items: JSON.stringify([{ label: 'SALARIO', kind: 'earning', value: 3148.06 }]), accountId: a.id }, meTok);
+  ok('contracheque: cria com mês de referência e líquido; valida mês e valor', () => {
+    assert.equal(ps.ok, true); assert.equal(ps.data.refMonth, '2026-09'); assert.equal(ps.data.net, 2114.62);
+    assert.equal(call('payslip.create', { ownerId: me.id, payDate: '2026-10-05', refMonth: '2026-13', net: 10 }, meTok).error.code, 'VALIDATION');
+    assert.equal(call('payslip.create', { ownerId: me.id, payDate: '2026-10-05', refMonth: '2026-09', net: -5 }, meTok).error.code, 'VALIDATION');
+    assert.equal(call('payslip.create', { ownerId: 'x', payDate: '2026-10-05', refMonth: '2026-09', net: 5 }, meTok).error.code, 'VALIDATION');
+  });
+  ok('contracheque: edita, lista no bootstrap e arquiva', () => {
+    assert.equal(call('payslip.update', { id: ps.data.id, net: 2200 }, meTok).data.net, 2200);
+    assert.equal(call('bootstrap', {}, meTok).data.payslips.length, 1);
+    call('payslip.remove', { id: ps.data.id }, meTok);
+    assert.equal(call('payslip.list', {}, meTok).data.length, 0);
+  });
+  ok('despensa: item com fardos, validade e consumo; consumo negativo recusado', () => {
+    const it = call('pantryItem.create', { name: 'Arroz', group: 'Grãos', packs: 2, perPack: 5, units: 1, unit: 'kg', expiry: '2027-03-01', perPersonDay: 0.1 }, meTok);
+    assert.equal(it.ok, true); assert.equal(it.data.perPack, 5);
+    assert.equal(call('pantryItem.create', { name: 'X', perPersonDay: -1 }, meTok).error.code, 'VALIDATION');
+    assert.equal(call('bootstrap', {}, meTok).data.pantry.length, 1);
+  });
+  ok('conta fixa x variável e cofre (meta kind=vault)', () => {
+    const v = call('fixedBill.create', { name: 'Água', amount: 90, dueDay: 10, ownerId: me.id, billType: 'variable' }, meTok);
+    assert.equal(v.data.billType, 'variable');
+    const f = call('fixedBill.create', { name: 'Aluguel2', amount: 900, dueDay: 5, ownerId: me.id }, meTok);
+    assert.equal(f.data.billType, 'fixed');
+    assert.equal(call('fixedBill.create', { name: 'Luz', amount: 90, dueDay: 10, ownerId: me.id, billType: 'x' }, meTok).error.code, 'VALIDATION');
+    const g = call('goal.create', { name: 'Cofre de segurança', target: 30000, ownerId: me.id, kind: 'vault' }, meTok);
+    assert.equal(g.data.kind, 'vault');
+  });
+  ok('configurações: pantry e vault validadas', () => {
+    assert.equal(call('settings.save', { values: { pantry: { people: 4 }, vault: { monthlyCost: 5000, months: 6 } } }, meTok).data.vault.months, 6);
+    assert.equal(call('settings.save', { values: { pantry: { people: 0 } } }, meTok).error.code, 'VALIDATION');
+    assert.equal(call('settings.save', { values: { vault: { monthlyCost: -1, months: 6 } } }, meTok).error.code, 'VALIDATION');
+    assert.equal(call('settings.save', { values: { vault: { monthlyCost: null, months: 40 } } }, meTok).error.code, 'VALIDATION');
+  });
+  ok('notícias: lê RSS, limpa título/fonte e usa cache', () => {
+    const r = call('news.get', {}, meTok);
+    assert.equal(r.ok, true); assert.equal(r.data.groups.length, 2);
+    assert.equal(r.data.groups[0].items[0].title, 'Selic sobe 1'); assert.equal(r.data.groups[0].items[0].source, 'Jornal X');
+    assert.ok(r.data.groups[0].items[0].link.startsWith('https://'));
+  });
+  ok('autoajuste: aba apagada é recriada sozinha sem rodar setup()', () => {
+    delete sheets.Pantry;
+    // força novo ciclo de verificação do script
+    vm.runInContext('Object.keys(ensured_).forEach(function(k){ delete ensured_[k]; })', ctx);
+    assert.equal(call('pantryItem.list', {}, meTok).data.length, 0);
+    assert.ok(sheets.Pantry && sheets.Pantry.rows[0].includes('perPersonDay'));
+  });
+}
+
 console.log(`\n${n} grupos de testes do backend passaram.`);

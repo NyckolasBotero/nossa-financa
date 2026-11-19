@@ -32,6 +32,13 @@ Depois de alterar o backend, faça **nova versão** da implantação.
 - **Menu lateral**: clique para expandir com os nomes; no celular há barra inferior. Botão de tema claro/escuro.
 - **Feedback**: notificações laterais a cada ação (salvando, salvo, erro) e animação de carregamento com a logo no login.
 
+- **Conta fixa ou variável** (aba Contas F.V): a variável (água, luz) usa a média dos meses pagos como previsão; há gráfico mês a mês com filtro por categoria no Painel e na própria aba. Excluir é direto no cartão.
+- **Contracheque**: informe proventos e descontos (ou leia PDF/foto); o líquido vira receita na data em que caiu e o mês de referência é o anterior (05/10 → setembro). Dá para editar e excluir.
+- **Cofre de segurança**: meta = custo de vida mensal × 6 meses (ajustável); o cofre enche conforme você guarda e mostra meses e dias de segurança.
+- **Despensa**: alimentos com fardos, validade e consumo por pessoa; mostra quantos dias a comida dura e o que está vencendo.
+- **Painel**: versículo do dia (ARC) e notícias de finanças do Brasil e do mundo (o Apps Script busca no Google Notícias e guarda em cache por 30 min; exige a permissão de acesso externo).
+- Abas e colunas novas da planilha são criadas sozinhas pelo backend; não é preciso rodar `setup()` de novo.
+
 ## Regras de contabilidade
 - Cartão alimentação: fora do saldo bancário/receitas/despesas, contado só no indicador de alimentação.
 - Compra no crédito = despesa na data da compra; pagamento de fatura só baixa a conta.

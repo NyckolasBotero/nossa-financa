@@ -49,7 +49,8 @@ function openContribute(goal) {
 export function render(view) {
   const d = store.data(), today = store.today();
   $('#gl-total', view).textContent = brl(P.savedTotal(d));
-  $('#gl-list', view).innerHTML = d.goals.length ? d.goals.map((g) => {
+  const goals = d.goals.filter((g) => g.kind !== 'vault');   // o cofre tem tela própria
+  $('#gl-list', view).innerHTML = goals.length ? goals.map((g) => {
     const saved = P.goalSaved(d, g), left = Math.max(0, g.target - saved), ratio = g.target > 0 ? saved / g.target : 0;
     let plan = '';
     if (g.deadline && left > 0) {

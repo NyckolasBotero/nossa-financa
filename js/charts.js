@@ -3,6 +3,7 @@
  * Cada função devolve uma string HTML; as cores vêm de variáveis CSS ou hex.
  */
 import { esc, brl, brlShort } from './format.js';
+import { familyMood } from './logo.js';
 
 function niceMax(v) {
   if (v <= 0) return 1;
@@ -66,6 +67,26 @@ export function areaChart({ points, height = 200, color = 'var(--brand)', label 
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}"><defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".28"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>${g}<path d="${area}" fill="url(#ag)"/><path d="${line}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${dots}<circle cx="${x(points.length - 1)}" cy="${y(last.value)}" r="5" fill="${color}"/></svg>`;
 }
 
+/** Várias linhas (uma por série) com pontos; valores nulos viram lacunas. series: [{ name, color, values[] }] */
+export function lineChart({ labels, series, height = 230, label = 'Gráfico de linhas', avg = true }) {
+  const W = 600, H = height, L = 52, R = 14, T = 12, B = 28, iw = W - L - R, ih = H - T - B;
+  const max = niceMax(Math.max(1, ...series.flatMap((x) => x.values.filter((v) => v != null))));
+  const x = (i) => L + (iw * i) / Math.max(1, labels.length - 1), y = (v) => T + ih - (v / max) * ih;
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const v = (max / 4) * i; g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" class="tick">${esc(brlShort(v).replace('R$ ', ''))}</text>`; }
+  labels.forEach((lb, i) => { g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="tick">${esc(lb)}</text>`; });
+  for (const s of series) {
+    let d = '', pen = false;
+    s.values.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)} `; pen = true; });
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s.values.forEach((v, i) => { if (v != null) g += `<circle cx="${x(i)}" cy="${y(v)}" r="4.5" fill="var(--surface)" stroke="${s.color}" stroke-width="2.5"><title>${esc(s.name)} · ${esc(labels[i])}: ${esc(brl(v))}</title></circle>`; });
+    const vals = s.values.filter((v) => v != null);
+    if (avg && vals.length > 1) { const a = vals.reduce((p, c) => p + c, 0) / vals.length; g += `<line x1="${L}" x2="${W - R}" y1="${y(a)}" y2="${y(a)}" stroke="${s.color}" stroke-width="1.4" stroke-dasharray="5 5" opacity=".55"><title>Média de ${esc(s.name)}: ${esc(brl(a))}</title></line>`; }
+  }
+  const legend = series.map((s) => { const vals = s.values.filter((v) => v != null), a = vals.length ? vals.reduce((p, c) => p + c, 0) / vals.length : 0; return `<span class="lg"><i style="background:${s.color}"></i>${esc(s.name)} · média ${esc(brl(a))}</span>`; }).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${g}</svg><div class="legend">${legend}</div>`;
+}
+
 /** Anel de progresso (metas). pct de 0 a 1+. */
 export function ring(pct, color = 'var(--brand)', text = '') {
   const r = 34, c = 2 * Math.PI * r, p = Math.max(0, Math.min(1, pct));
@@ -82,7 +103,10 @@ const arc = (s0, s1, r) => { const [x0, y0] = polar(180 + s0 * 1.8, r), [x1, y1]
 export function gauge({ score = 0, label = '', hasData = true, tone = 'var(--ink)' }) {
   const segs = [[0, 40, '#f2677a'], [40, 70, '#f4a62a'], [70, 85, '#7ccf6a'], [85, 100, '#1fb58a']];
   const s = hasData ? Math.max(0, Math.min(100, score)) : 0;
-  return `<svg class="gauge" viewBox="0 0 300 210" role="img" aria-label="Saúde financeira: ${hasData ? s + ' de 100, ' + esc(label) : 'sem dados'}">
+  const mood = !hasData ? '' : s < 40 ? 'sad' : s < 85 ? 'ok' : 'hug';
+  const fam = (m, x, y, name) => `<svg class="g-fam ${mood === m ? 'on' : ''}" x="${x}" y="${y}" width="96" height="66" viewBox="0 0 150 104" aria-hidden="true"><title>${name}</title>${familyMood(m)}</svg>`;
+  return `<svg class="gauge" viewBox="-86 -54 472 276" role="img" aria-label="Saúde financeira: ${hasData ? s + ' de 100, ' + esc(label) : 'sem dados'}">
+    ${fam('sad', -84, 76, 'Família abalada')}${fam('ok', 102, -52, 'Família contente')}${fam('hug', 290, 76, 'Família abraçada e feliz')}
     <path class="g-track" d="${arc(0, 100, 120)}"/>
     ${segs.map(([a, b, c]) => `<path class="g-seg" d="${arc(a + 0.6, b - 0.6, 120)}" stroke="${c}"/>`).join('')}
     <text class="g-tick" x="30" y="172">0</text><text class="g-tick" x="270" y="172">100</text>
@@ -106,4 +130,23 @@ export function cup(level, { label = '' } = {}) {
       <circle class="c-bubble" cx="48" cy="118" r="3"/><circle class="c-bubble" cx="70" cy="126" r="2.200"/><circle class="c-bubble" cx="86" cy="112" r="3.400"/></g></g>
     <path class="c-glass" d="M24 16h72l-8 116q-1 8-9 8H41q-8 0-9-8z" style="fill:none"/>
     <path class="c-shine" d="M34 26l6 88"/></svg>`;
+}
+
+// ------------------------------------------------------------------ cofre (nível = progresso 0-1)
+let safeN = 0;
+export function safe(level, { label = 'Cofre' } = {}) {
+  const id = `sf${++safeN}`, lv = Math.max(0, Math.min(1, level || 0)), top = 144 - lv * 118;
+  const wave = 'M0 6q16-9 32 0t32 0t32 0t32 0t32 0t32 0t32 0V170H0z';
+  const coins = [[58, 40], [82, 72], [108, 46], [134, 78], [70, 98], [120, 102], [96, 62]].map(([x, y], i) => `<circle class="sf-coin" cx="${x}" cy="${y}" r="${5 + (i % 3)}"/>`).join('');
+  return `<svg class="safe ${lv >= 1 ? 'full' : ''}" viewBox="0 0 200 190" role="img" aria-label="${esc(label)}: ${Math.round(lv * 100)}% cheio">
+    <defs><clipPath id="${id}"><rect x="38" y="28" width="124" height="118" rx="10"/></clipPath>
+    <linearGradient id="${id}w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--mint)"/><stop offset="1" stop-color="var(--income)"/></linearGradient></defs>
+    <rect class="sf-body" x="18" y="12" width="164" height="150" rx="20"/>
+    <rect class="sf-in" x="38" y="28" width="124" height="118" rx="10"/>
+    <g clip-path="url(#${id})"><g class="sf-fill" style="transform:translateY(${top.toFixed(1)}px)">
+      <rect x="0" y="6" width="200" height="170" style="fill:url(#${id}w)"/><g transform="translate(-6 -4)"><path class="sf-wave1" d="${wave}"/></g>${lv > 0.04 ? coins : ''}</g></g>
+    <rect class="sf-glass" x="38" y="28" width="124" height="118" rx="10"/>
+    <path class="sf-shine" d="M48 38l0 40"/>
+    <circle class="sf-knob" cx="168" cy="152" r="14"/><circle class="sf-knob-i" cx="168" cy="152" r="5"/>
+    <rect class="sf-foot" x="34" y="162" width="26" height="12" rx="4"/><rect class="sf-foot" x="140" y="162" width="26" height="12" rx="4"/></svg>`;
 }
