@@ -10,29 +10,91 @@ import { CONFIG } from './config.js';
 
 const show = (el, on) => { el.hidden = !on; };
 
-// ---------------------------------------------------------------- conexão (primeiro acesso)
-function showConnect(message = '') {
+// ---------------------------------------------------------------- acesso: entrar, criar conta, recuperar senha
+const device = () => (navigator.userAgent || '').slice(0, 60);
+const anon = (action, payload) => api.call(action, payload, { conn: { url: CONFIG.API_URL || api.getConn().url, token: '' }, anon: true });
+
+const SCREENS = {
+  login: { title: 'Entrar', sub: 'Use o e-mail e a senha do seu cadastro.', btn: 'Entrar',
+    fields: [['email', 'E-mail', 'email', 'username'], ['password', 'Senha', 'password', 'current-password']],
+    links: [['register', 'Criar conta'], ['forgot', 'Esqueci a senha']] },
+  register: { title: 'Criar conta', sub: 'Vamos enviar um código para o seu e-mail para confirmar.', btn: 'Enviar código',
+    fields: [['name', 'Nome', 'text', 'name'], ['email', 'E-mail (Gmail)', 'email', 'username'], ['password', 'Senha (mín. 8 caracteres)', 'password', 'new-password'], ['confirm', 'Repita a senha', 'password', 'new-password']],
+    links: [['login', 'Já tenho conta']] },
+  verify: { title: 'Confirme seu e-mail', sub: 'Digite o código de 6 dígitos que enviamos. Vale por 10 minutos.', btn: 'Confirmar',
+    fields: [['code', 'Código', 'text', 'one-time-code']], links: [['register', 'Voltar']] },
+  forgot: { title: 'Esqueci a senha', sub: 'Informe o e-mail do cadastro e enviaremos um código.', btn: 'Enviar código',
+    fields: [['email', 'E-mail', 'email', 'username']], links: [['login', 'Voltar']] },
+  reset: { title: 'Nova senha', sub: 'Digite o código recebido e escolha a nova senha.', btn: 'Salvar nova senha',
+    fields: [['code', 'Código', 'text', 'one-time-code'], ['password', 'Nova senha (mín. 8 caracteres)', 'password', 'new-password'], ['confirm', 'Repita a senha', 'password', 'new-password']],
+    links: [['forgot', 'Pedir outro código']] }
+};
+let conn = { mode: 'login', email: '' };
+
+function showConnect(message = '', mode = 'login', info = '') {
   show($('#app'), false); show($('#connect'), true);
-  const c = api.getConn();
-  $('#c-url').value = c.url;
-  $('#c-url').closest('.field').hidden = !!CONFIG.API_URL;   // URL já vem do config.js
-  const err = $('#connect-error'); err.textContent = message; err.hidden = !message;
+  conn.mode = mode;
+  const sc = SCREENS[mode], card = $('#connect-card');
+  const urlField = CONFIG.API_URL ? '' : `<div class="field"><label for="c-url">URL do Web App</label><input id="c-url" name="url" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" value="${esc(api.getConn().url)}" required></div>`;
+  card.innerHTML = `<form id="connect-form" novalidate class="stack">
+    <div class="brand-mark" aria-hidden="true"><span></span></div>
+    <h1>${sc.title}</h1><p class="muted">${sc.sub}</p>
+    <div class="form-error" id="connect-error" role="alert" ${message ? '' : 'hidden'}>${esc(message)}</div>
+    ${info ? `<p class="pill pill-ok" role="status">${esc(info)}</p>` : ''}
+    ${urlField}
+    ${sc.fields.map(([n, l, t, ac]) => `<div class="field"><label for="c-${n}">${l}</label><input id="c-${n}" name="${n}" type="${t}" autocomplete="${ac}" ${t === 'email' ? 'autocapitalize="none" spellcheck="false"' : ''} ${n === 'code' ? 'inputmode="numeric" maxlength="6"' : ''} ${n === 'email' && conn.email ? `value="${esc(conn.email)}"` : ''} required></div>`).join('')}
+    <button class="btn btn-primary btn-block" type="submit">${sc.btn}</button>
+    <div class="btn-row">${sc.links.map(([m, l]) => `<button class="btn btn-ghost sm" type="button" data-go="${m}">${l}</button>`).join('')}</div>
+  </form>`;
+  $$('[data-go]', card).forEach((b) => { b.onclick = () => showConnect('', b.dataset.go); });
+  $('#connect-form').addEventListener('submit', submitConnect);
 }
-$('#connect-form').addEventListener('submit', async (e) => {
+
+async function submitConnect(e) {
   e.preventDefault();
-  const url = $('#c-url').value.trim(), username = $('#c-user').value.trim(), password = $('#c-pass').value;
-  const err = $('#connect-error'); err.hidden = true;
-  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { err.textContent = 'A URL deve começar com https://script.google.com/ e terminar em /exec.'; err.hidden = false; return; }
-  if (!username || !password) { err.textContent = 'Informe usuário e senha.'; err.hidden = false; return; }
-  const btn = $('#connect-form button[type=submit]'); btn.disabled = true;
+  const f = e.target, v = (n) => (f.elements[n]?.value || '').trim(), raw = (n) => f.elements[n]?.value || '';
+  const fail = (m) => { const er = $('#connect-error'); er.textContent = m; er.hidden = false; };
+  if (!CONFIG.API_URL) {
+    const url = v('url');
+    if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) return fail('A URL deve começar com https://script.google.com/ e terminar em /exec.');
+    api.setConn({ url, token: '' });
+  }
+  const btn = $('button[type=submit]', f); btn.disabled = true;
   try {
-    const r = await api.call('auth.login', { username, password, device: (navigator.userAgent || '').slice(0, 60) }, { conn: { url, token: '' }, anon: true });
-    api.setConn({ url, token: r.token });
-    $('#c-pass').value = '';
-    await boot();
-  } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+    const email = v('email').toLowerCase() || conn.email;
+    if (email) conn.email = email;
+    if (conn.mode === 'login') {
+      const r = await anon('auth.login', { username: email, password: raw('password'), device: device() });
+      return enter(r);
+    }
+    if (conn.mode === 'register') {
+      if (raw('password') !== raw('confirm')) return fail('As senhas não conferem.');
+      conn.pending = { name: v('name'), email, password: raw('password'), confirm: raw('confirm') };
+      await anon('auth.register', conn.pending);
+      return showConnect('', 'verify', `Código enviado para ${email}.`);
+    }
+    if (conn.mode === 'verify') {
+      const r = await anon('auth.verify', { email: conn.email, code: v('code'), device: device() });
+      conn.pending = null;
+      if (r.pending) return showConnect('', 'login', 'Cadastro confirmado! Aguarde a aprovação de quem administra o app para entrar.');
+      return enter(r);
+    }
+    if (conn.mode === 'forgot') {
+      await anon('auth.forgot', { email });
+      return showConnect('', 'reset', 'Se o e-mail estiver cadastrado, enviamos um código.');
+    }
+    if (conn.mode === 'reset') {
+      if (raw('password') !== raw('confirm')) return fail('As senhas não conferem.');
+      await anon('auth.reset', { email: conn.email, code: v('code'), password: raw('password'), confirm: raw('confirm') });
+      return showConnect('', 'login', 'Senha alterada! Entre com a nova senha.');
+    }
+  } catch (ex) { fail(ex.message); }
   finally { btn.disabled = false; }
-});
+}
+async function enter(r) {
+  api.setConn({ url: CONFIG.API_URL || api.getConn().url, token: r.token });
+  await boot();
+}
 
 // ---------------------------------------------------------------- shell
 function paintStatic() {

@@ -94,7 +94,9 @@ const ACTIONS = {
   'tx.create': [txCreate_, true],
   'tx.update': [txUpdate_, true],
   'tx.remove': [txRemove_, true],
-  'user.list': [function () { return readAll_('Acessos').map(publicUser_); }, false],
+  'user.list': [function () { return activeUsers_(); }, false],
+  'user.admin.list': [function (p, u) { adminOnly_(u); return umList(); }, false],
+  'user.admin.set': [function (p, u) { adminOnly_(u); return umSet(p); }, false],   // umSet já usa a trava
   'auth.logout': [logout_, false],
   'user.update': [userUpdate_, true],
   'settings.get': [function () { return settings_(); }, false],
@@ -127,10 +129,10 @@ function doPost(e) {
   let out;
   try {
     const req = parseBody_(e);
-    const entry = req.action === 'auth.login' ? [] : ACTIONS[String(req.action || '')];
+    const entry = ANON_ACTIONS[req.action] ? [] : ACTIONS[String(req.action || '')];
     if (!entry) throw fail_('UNKNOWN_ACTION', 'Ação desconhecida.');
     const payload = req.payload && typeof req.payload === 'object' ? req.payload : {};
-    if (req.action === 'auth.login') return json_({ ok: true, data: login_(payload) });
+    if (ANON_ACTIONS[req.action]) return json_({ ok: true, data: ANON_ACTIONS[req.action](payload) });
     const user = auth_(req.token);
     payload.__token = req.token;
     const data = entry[1] ? withLock_(function () { return entry[0](payload, user); }) : entry[0](payload, user);
@@ -160,7 +162,16 @@ function fail_(code, message, data) {
 
 // ---------------------------------------------------------------- autenticação
 
+/** Ações que não exigem sessão (login, cadastro e recuperação de senha). */
+const ANON_ACTIONS = {
+  'auth.login': function (p) { return login_(p); },
+  'auth.register': function (p) { return register_(p); },
+  'auth.verify': function (p) { return verify_(p); },
+  'auth.forgot': function (p) { return forgot_(p); },
+  'auth.reset': function (p) { return reset_(p); }
+};
 const SESSION_DAYS = 30;
+const CODE_TTL = 600;               // código por e-mail vale 10 min
 const PW_ROUNDS = 3000;
 const MAX_FAILS = 8;           // tentativas erradas por usuário a cada 15 min
 
@@ -183,21 +194,112 @@ function login_(p) {
   const cache = CacheService.getScriptCache(), key = 'fails:' + usuario;
   if (Number(cache.get(key) || 0) >= MAX_FAILS) throw fail_('LOCKED', 'Muitas tentativas. Aguarde 15 minutos e tente de novo.');
   const u = readAll_('Acessos').filter(function (x) { return x.usuario === usuario; })[0];
-  const good = u && u.status === 'ativo' && u.senhaHash && pwHash_(senha, u.sal) === u.senhaHash;
-  if (!good) {
+  const passOk = u && u.senhaHash && pwHash_(senha, u.sal) === u.senhaHash;
+  if (!passOk) {
     cache.put(key, String(Number(cache.get(key) || 0) + 1), 900);
-    throw fail_('BAD_LOGIN', u && u.status === 'inativo' ? 'Acesso desativado. Fale com quem administra a planilha.' : 'Usuário ou senha inválidos.');
+    throw fail_('BAD_LOGIN', 'Usuário ou senha inválidos.');
   }
+  if (u.status === 'pendente') throw fail_('PENDING', 'Seu cadastro aguarda aprovação de quem administra o app.');
+  if (u.status !== 'ativo') throw fail_('BAD_LOGIN', 'Acesso desativado. Fale com quem administra a planilha.');
   cache.remove(key);
+  return withLock_(function () { return createSession_(u, p.device); });
+}
+function createSession_(u, device) {
+  purgeSessions_();
+  const token = newToken_(), now = new Date();
+  insert_('Sessoes', { id: hash_(token), userId: u.id, criadaEm: now.toISOString(), expiraEm: new Date(now.getTime() + SESSION_DAYS * 864e5).toISOString(), aparelho: String(device || '').slice(0, 80) });
+  const row = findRow_('Acessos', u.id); u.ultimoAcesso = now.toISOString(); writeRow_('Acessos', row, u);
+  audit_(u, 'login', 'Acessos', u.id);
+  return { token: token, user: publicUser_(u) };
+}
+
+// ---- cadastro e recuperação de senha por e-mail (código de 6 dígitos, vale 10 min)
+
+function emailOk_(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 80; }
+function newCode_() { return ('00000' + (parseInt(Utilities.getUuid().replace(/-/g, '').slice(0, 8), 16) % 1000000)).slice(-6); }
+function throttle_(key, seconds, msg) {
+  const c = CacheService.getScriptCache();
+  if (c.get(key)) throw fail_('THROTTLE', msg || 'Aguarde um minuto para pedir outro código.');
+  c.put(key, '1', seconds);
+}
+function sendCode_(email, code, motivo) {
+  MailApp.sendEmail({ to: email, name: APP.name, subject: APP.name + ': seu código ' + code,
+    body: 'Seu código para ' + motivo + ' é: ' + code + '\n\nEle vale por 10 minutos. Se não foi você, ignore este e-mail.' });
+}
+function ownerEmail_() { try { return String(Session.getEffectiveUser().getEmail() || '').toLowerCase(); } catch (e) { return ''; } }
+function checkCode_(prefix, email, code) {
+  const cache = CacheService.getScriptCache(), raw = cache.get(prefix + email);
+  if (!raw) throw fail_('CODE_EXPIRED', 'Código vencido. Peça um novo.');
+  const d = JSON.parse(raw);
+  if (d.tries >= 5) { cache.remove(prefix + email); throw fail_('CODE_EXPIRED', 'Muitas tentativas. Peça um novo código.'); }
+  if (hash_(String(code || '').trim() + ':' + email) !== d.codeHash) {
+    d.tries++; cache.put(prefix + email, JSON.stringify(d), CODE_TTL);
+    throw fail_('BAD_CODE', 'Código incorreto.');
+  }
+  cache.remove(prefix + email);
+  return d;
+}
+
+/** 1º passo do cadastro: valida e manda o código. Nada é gravado na planilha ainda. */
+function register_(p) {
+  const nome = String(p.name || '').trim(), email = String(p.email || '').trim().toLowerCase();
+  if (!nome || nome.length > 40) throw fail_('VALIDATION', 'Informe seu nome (até 40 letras).');
+  if (!emailOk_(email)) throw fail_('VALIDATION', 'Informe um e-mail válido.');
+  validatePassword_(String(p.password || ''), String(p.confirm || ''), email);
+  const all = readAll_('Acessos');
+  if (all.some(function (u) { return u.usuario === email; })) throw fail_('DUPLICATE', 'Esse e-mail já tem cadastro. Use "Esqueci a senha" se precisar.');
+  const owner = ownerEmail_();
+  if (!all.length && owner && email !== owner) throw fail_('VALIDATION', 'O primeiro cadastro precisa ser feito com o Gmail dono desta planilha.');
+  if (all.filter(function (u) { return u.status === 'pendente'; }).length >= 10) throw fail_('LIMIT', 'Há cadastros demais aguardando aprovação.');
+  throttle_('sentreg:' + email, 60);
+  const sal = newToken_(), code = newCode_();
+  CacheService.getScriptCache().put('reg:' + email, JSON.stringify({ nome: nome, sal: sal, senhaHash: pwHash_(String(p.password), sal), codeHash: hash_(code + ':' + email), tries: 0 }), CODE_TTL);
+  sendCode_(email, code, 'confirmar seu cadastro');
+  return { sent: true };
+}
+/** 2º passo: confere o código e cria o acesso. O 1º cadastro vira administrador; os demais ficam pendentes. */
+function verify_(p) {
+  const email = String(p.email || '').trim().toLowerCase();
+  const d = checkCode_('reg:', email, p.code);
   return withLock_(function () {
-    purgeSessions_();
-    const token = newToken_(), now = new Date();
-    insert_('Sessoes', { id: hash_(token), userId: u.id, criadaEm: now.toISOString(), expiraEm: new Date(now.getTime() + SESSION_DAYS * 864e5).toISOString(), aparelho: String(p.device || '').slice(0, 80) });
-    const row = findRow_('Acessos', u.id); u.ultimoAcesso = now.toISOString(); writeRow_('Acessos', row, u);
-    audit_(u, 'login', 'Acessos', u.id);
-    return { token: token, user: publicUser_(u) };
+    const all = readAll_('Acessos');
+    if (all.some(function (u) { return u.usuario === email; })) throw fail_('DUPLICATE', 'Esse e-mail já tem cadastro.');
+    const first = all.length === 0;
+    const u = { id: uid_(), usuario: email, nome: d.nome, email: email, perfil: first ? 'admin' : 'membro', status: first ? 'ativo' : 'pendente', senhaHash: d.senhaHash, sal: d.sal, criadoEm: iso_(), ultimoAcesso: '' };
+    insert_('Acessos', u);
+    shareFolderWithEmail_(email);
+    return first ? createSession_(u, p.device) : { pending: true };
   });
 }
+/** Esqueci a senha: sempre responde igual, exista o e-mail ou não. */
+function forgot_(p) {
+  const email = String(p.email || '').trim().toLowerCase();
+  if (!emailOk_(email)) throw fail_('VALIDATION', 'Informe um e-mail válido.');
+  throttle_('sentrst:' + email, 60);
+  const u = readAll_('Acessos').filter(function (x) { return x.usuario === email; })[0];
+  if (u && u.status !== 'inativo') {
+    const code = newCode_();
+    CacheService.getScriptCache().put('rst:' + email, JSON.stringify({ codeHash: hash_(code + ':' + email), tries: 0 }), CODE_TTL);
+    sendCode_(email, code, 'redefinir sua senha');
+  }
+  return { sent: true };
+}
+function reset_(p) {
+  const email = String(p.email || '').trim().toLowerCase();
+  validatePassword_(String(p.password || ''), String(p.confirm || ''), email);
+  checkCode_('rst:', email, p.code);
+  return withLock_(function () {
+    const u = readAll_('Acessos').filter(function (x) { return x.usuario === email; })[0];
+    if (!u) throw fail_('CODE_EXPIRED', 'Código vencido. Peça um novo.');
+    u.sal = newToken_(); u.senhaHash = pwHash_(String(p.password), u.sal);
+    writeRow_('Acessos', findRow_('Acessos', u.id), u);
+    revokeSessions_(u.id);
+    CacheService.getScriptCache().remove('fails:' + email);
+    return { ok: true };
+  });
+}
+function adminOnly_(u) { if (u.perfil !== 'admin') throw fail_('FORBIDDEN', 'Só administradores podem fazer isso.'); }
+function activeUsers_() { return readAll_('Acessos').filter(function (u) { return u.status !== 'pendente'; }).map(publicUser_); }
 function logout_(p, user) {
   const row = p.__token ? findRow_('Sessoes', hash_(p.__token)) : 0;
   if (row) sheet_('Sessoes').deleteRow(row);
@@ -403,7 +505,7 @@ function bootstrap_(p, user) {
   const since = /^\d{4}-\d{2}-\d{2}$/.test(p.since || '') ? p.since : '';
   return {
     serverTime: iso_(), me: publicUser_(user), since: since,
-    users: readAll_('Acessos').map(publicUser_),
+    users: activeUsers_(),
     accounts: readAll_('Accounts'), cards: readAll_('Cards'), categories: readAll_('Categories'),
     fixedBills: readAll_('FixedBills'), goals: readAll_('Goals'), settings: settings_(),
     transactions: readAll_('Transactions').filter(function (t) { return !t.archived && (!since || t.date >= since); }),
@@ -417,7 +519,7 @@ function sync_(p) {
   return {
     serverTime: iso_(), accounts: changed('Accounts'), cards: changed('Cards'), categories: changed('Categories'),
     fixedBills: changed('FixedBills'), goals: changed('Goals'), transactions: changed('Transactions'),
-    users: readAll_('Acessos').map(publicUser_), settings: settings_(), inboxCounts: inboxCounts_()
+    users: activeUsers_(), settings: settings_(), inboxCounts: inboxCounts_()
   };
 }
 
@@ -986,14 +1088,14 @@ function umList() {
 function umCreate(f) {
   return withLock_(function () {
     const usuario = String(f.usuario || '').trim().toLowerCase(), nome = String(f.nome || '').trim();
-    if (!/^[a-z0-9._-]{3,30}$/.test(usuario)) throw fail_('VALIDATION', 'Usuário: 3 a 30 caracteres, só letras minúsculas, números, ponto, hífen ou _.');
+    if (!/^[a-z0-9._@+-]{3,80}$/.test(usuario)) throw fail_('VALIDATION', 'Login: use o e-mail (ou 3+ caracteres: letras minúsculas, números, . _ - @).');
     if (!nome) throw fail_('VALIDATION', 'Informe o nome.');
     if (readAll_('Acessos').some(function (u) { return u.usuario === usuario; })) throw fail_('DUPLICATE', 'Esse usuário já existe.');
     validatePassword_(f.senha, f.confirma, usuario);
     const perfil = f.perfil === 'admin' || !readAll_('Acessos').length ? 'admin' : 'membro';
     const sal = newToken_();
-    insert_('Acessos', { id: uid_(), usuario: usuario, nome: nome, email: String(f.email || '').trim(), perfil: perfil, status: 'ativo', senhaHash: pwHash_(String(f.senha), sal), sal: sal, criadoEm: iso_(), ultimoAcesso: '' });
-    shareFolderWithEmail_(String(f.email || '').trim());
+    insert_('Acessos', { id: uid_(), usuario: usuario, nome: nome, email: usuario.indexOf('@') > 0 ? usuario : '', perfil: perfil, status: 'ativo', senhaHash: pwHash_(String(f.senha), sal), sal: sal, criadoEm: iso_(), ultimoAcesso: '' });
+    if (usuario.indexOf('@') > 0) shareFolderWithEmail_(usuario);
     return umList();
   });
 }
@@ -1011,7 +1113,7 @@ function umReset(f) {
 function umSet(f) {
   return withLock_(function () {
     const u = getById_('Acessos', f.id); if (!u) throw fail_('NOT_FOUND', 'Usuário não encontrado.');
-    if (f.status) { if (['ativo', 'inativo'].indexOf(f.status) < 0) throw fail_('VALIDATION', 'Status inválido.'); u.status = f.status; }
+    if (f.status) { if (['ativo', 'inativo', 'pendente'].indexOf(f.status) < 0) throw fail_('VALIDATION', 'Status inválido.'); u.status = f.status; }
     if (f.perfil) { if (['admin', 'membro'].indexOf(f.perfil) < 0) throw fail_('VALIDATION', 'Perfil inválido.'); u.perfil = f.perfil; }
     const rest = activeAdmins_().filter(function (a) { return a.id !== u.id; });
     if (!rest.length && !(u.perfil === 'admin' && u.status === 'ativo')) throw fail_('VALIDATION', 'Mantenha pelo menos um administrador ativo.');
@@ -1027,7 +1129,7 @@ function formatAcessos_() {
     const sh = sheet_('Acessos');
     sh.hideColumns(7, 2);
     sh.getRange(2, 5, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['admin', 'membro'], true).build());
-    sh.getRange(2, 6, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['ativo', 'inativo'], true).build());
+    sh.getRange(2, 6, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['ativo', 'inativo', 'pendente'], true).build());
     sheet_('Sessoes').hideSheet();
   } catch (e) { /* ambiente sem esses recursos */ }
 }
@@ -1038,7 +1140,7 @@ const USER_MANAGER_HTML_ = '<!doctype html><html><head><base target="_top"><meta
   'input,select{width:100%;padding:7px;border:1px solid #b9cddb;border-radius:8px;box-sizing:border-box}.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}' +
   '.p{background:#2d9cdb;color:#fff;padding:9px 16px;border:0;border-radius:14px;margin-top:10px;cursor:pointer}#m{margin:8px 0;font-weight:600}.e{color:#c0392b}.o{color:#16875f}small{color:#67829a}' +
   '</style></head><body><div id="m"></div><table><thead><tr><th>Usuário</th><th>Nome</th><th>Perfil</th><th>Status</th><th></th></tr></thead><tbody id="t"></tbody></table>' +
-  '<h3 id="ft">Novo usuário</h3><div class="g"><input id="u" placeholder="usuário (login)" autocomplete="off"><input id="n" placeholder="nome"><input id="em" placeholder="e-mail (opcional, p/ pasta de comprovantes)">' +
+  '<h3 id="ft">Novo usuário</h3><div class="g"><input id="u" placeholder="e-mail (login)" autocomplete="off"><input id="n" placeholder="nome">' +
   '<select id="pf"><option value="membro">Membro</option><option value="admin">Administrador</option></select>' +
   '<input id="s" type="password" placeholder="senha (mín. 8)" autocomplete="new-password"><input id="c" type="password" placeholder="confirmar senha" autocomplete="new-password"></div>' +
   '<button class="p" id="go">Criar usuário</button> <button class="b" id="cx" style="display:none">Cancelar</button><br><small>As senhas não ficam salvas em lugar nenhum: só um código irreversível (hash).</small>' +
@@ -1046,13 +1148,13 @@ const USER_MANAGER_HTML_ = '<!doctype html><html><head><base target="_top"><meta
   'function run(fn,args,done){google.script.run.withSuccessHandler(function(l){render(l);if(done)done()}).withFailureHandler(function(e){msg(e.message||String(e))})[fn].apply(null,args)}' +
   'function render(l){var t=$("t");t.innerHTML="";l.forEach(function(u){var r=t.insertRow();[u.usuario,u.nome,u.perfil,u.status].forEach(function(v){r.insertCell().textContent=v});var c=r.insertCell();' +
   'function B(x,f){var b=document.createElement("button");b.className="b";b.textContent=x;b.onclick=f;c.appendChild(b)}' +
-  'B("Redefinir senha",function(){R=u;$("ft").textContent="Redefinir senha de "+u.usuario;$("go").textContent="Salvar nova senha";$("cx").style.display="";["u","n","em","pf"].forEach(function(i){$(i).disabled=true});$("s").focus()});' +
-  'B(u.status=="ativo"?"Desativar":"Ativar",function(){run("umSet",[{id:u.id,status:u.status=="ativo"?"inativo":"ativo"}],function(){msg("Atualizado.",1)})});' +
+  'B("Redefinir senha",function(){R=u;$("ft").textContent="Redefinir senha de "+u.usuario;$("go").textContent="Salvar nova senha";$("cx").style.display="";["u","n","pf"].forEach(function(i){$(i).disabled=true});$("s").focus()});' +
+  'B(u.status=="ativo"?"Desativar":(u.status=="pendente"?"Aprovar":"Ativar"),function(){run("umSet",[{id:u.id,status:u.status=="ativo"?"inativo":"ativo"}],function(){msg("Atualizado.",1)})});' +
   'B(u.perfil=="admin"?"Tornar membro":"Tornar admin",function(){run("umSet",[{id:u.id,perfil:u.perfil=="admin"?"membro":"admin"}],function(){msg("Atualizado.",1)})})})}' +
-  'function reset(){R=null;$("ft").textContent="Novo usuário";$("go").textContent="Criar usuário";$("cx").style.display="none";["u","n","em","pf"].forEach(function(i){$(i).disabled=false});["u","n","em","s","c"].forEach(function(i){$(i).value=""})}' +
+  'function reset(){R=null;$("ft").textContent="Novo usuário";$("go").textContent="Criar usuário";$("cx").style.display="none";["u","n","pf"].forEach(function(i){$(i).disabled=false});["u","n","s","c"].forEach(function(i){$(i).value=""})}' +
   '$("cx").onclick=reset;$("go").onclick=function(){var s=$("s").value,c=$("c").value;' +
   'if(R){run("umReset",[{id:R.id,senha:s,confirma:c}],function(){msg("Senha alterada. Esse usuário precisa entrar de novo.",1);reset()})}' +
-  'else{run("umCreate",[{usuario:$("u").value,nome:$("n").value,email:$("em").value,perfil:$("pf").value,senha:s,confirma:c}],function(){msg("Usuário criado.",1);reset()})}};' +
+  'else{run("umCreate",[{usuario:$("u").value,nome:$("n").value,perfil:$("pf").value,senha:s,confirma:c}],function(){msg("Usuário criado.",1);reset()})}};' +
   'google.script.run.withSuccessHandler(render).withFailureHandler(function(e){msg(e.message)}).umList();</script></body></html>';
 
 function seedCategories_() {

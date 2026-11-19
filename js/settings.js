@@ -13,7 +13,24 @@ function renderApps(view) {
 }
 async function saveApps(apps) { await store.saveSettings({ monitoredApps: apps }); }
 
+const STATUS = { ativo: ['Ativo', 'pill-ok'], pendente: ['Aguardando aprovação', 'pill-warn'], inativo: ['Desativado', 'pill-bad'] };
+async function renderUsers(view) {
+  const card = $('#st-users-card', view);
+  if (store.state.me?.role !== 'admin') return;
+  const draw = (list) => {
+    card.hidden = false;
+    $('#st-users', view).innerHTML = list.map((u) => `<li class="app-i"><span><b>${esc(u.nome)}</b> <small class="muted">${esc(u.usuario)} · ${u.perfil}</small> <span class="pill ${STATUS[u.status]?.[1] || ''}">${STATUS[u.status]?.[0] || esc(u.status)}</span></span><span class="btn-row">${u.status === 'ativo' ? `<button class="btn btn-ghost sm" data-st="${u.id}|inativo">Desativar</button>` : `<button class="btn btn-soft sm" data-st="${u.id}|ativo">${u.status === 'pendente' ? 'Aprovar' : 'Reativar'}</button>`}</span></li>`).join('');
+  };
+  try { draw(await api.call('user.admin.list', {}, { silent: true })); } catch { return; }
+  $('#st-users', view).addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-st]'); if (!b) return;
+    const [id, status] = b.dataset.st.split('|');
+    try { draw(await api.call('user.admin.set', { id, status })); toast('Atualizado.', { kind: 'ok' }); } catch (err) { toast(err.message, { kind: 'err' }); }
+  });
+}
+
 export function render(view) {
+  renderUsers(view);
   const me = store.state.me, conn = api.getConn();
   $('#st-name', view).value = me?.name || '';
   $('#st-url', view).textContent = conn.url.replace(/(\/s\/[^/]{6})[^/]+/, '$1…');

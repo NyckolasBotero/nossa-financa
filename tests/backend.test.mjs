@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 const dir = path.resolve(import.meta.dirname, '../backend');
 const logs = [];
+const mails = [];
 
 function colRange(sh, r, c, nr, nc) {
   return {
@@ -34,7 +35,8 @@ const folder = { createFile(blob) { const id = 'f' + Object.keys(files).length; 
 
 const ctx = vm.createContext({
   console, Logger: { log: (s) => logs.push(s) },
-  Session: { getScriptTimeZone: () => 'America/Sao_Paulo' },
+  Session: { getScriptTimeZone: () => 'America/Sao_Paulo', getEffectiveUser: () => ({ getEmail: () => 'dono@gmail.com' }) },
+  MailApp: { sendEmail: (m) => mails.push(m) },
   CacheService: { getScriptCache: ((m) => () => {  return { get: (k) => m[k] ?? null, put: (k, v) => { m[k] = v; }, remove: (k) => { delete m[k]; } }; })({}) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -251,4 +253,48 @@ ok('usuário só altera o próprio nome', () => {
   assert.equal(call('user.list', {}, meTok).data.find((u) => u.id === wife.id).name, 'Esposa');
   assert.ok(!('tokenHash' in call('user.list', {}, meTok).data[0]));
 });
+
+// ---- cadastro e recuperação por e-mail (usa uma planilha limpa para testar o 1º acesso)
+{
+  const anon = (action, payload) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action, payload }) } }).s);
+  const lastCode = () => mails.at(-1).body.match(/: (\d{6})/)[1];
+  const saved = sheets.Acessos.rows.splice(1);        // esvazia os acessos, guardando para restaurar
+  ok('1º cadastro: só o Gmail dono da planilha; código por e-mail; vira admin e já entra', () => {
+    assert.match(anon('auth.register', { name: 'Intruso', email: 'x@gmail.com', password: 'senha-12345', confirm: 'senha-12345' }).error.message, /dono desta planilha/);
+    assert.equal(anon('auth.register', { name: 'Dono', email: 'Dono@Gmail.com', password: 'senha-12345', confirm: 'senha-12345' }).data.sent, true);
+    assert.equal(sheets.Acessos.rows.length, 1, 'nada gravado antes do código');
+    assert.equal(anon('auth.verify', { email: 'dono@gmail.com', code: '000000' }).error.code, 'BAD_CODE');
+    const r = anon('auth.verify', { email: 'dono@gmail.com', code: lastCode() });
+    assert.ok(r.data.token); assert.equal(r.data.user.role, 'admin');
+    assert.ok(!JSON.stringify(sheets.Acessos.rows).includes('senha-12345'));
+  });
+  ok('2º cadastro fica pendente até o admin aprovar; pendente não entra nem aparece nas listas', () => {
+    mails.length = 0;
+    anon('auth.register', { name: 'Esposa', email: 'ela@gmail.com', password: 'senha-67890', confirm: 'senha-67890' });
+    const r = anon('auth.verify', { email: 'ela@gmail.com', code: lastCode() });
+    assert.equal(r.data.pending, true);
+    assert.equal(login('ela@gmail.com', 'senha-67890').error.code, 'PENDING');
+    assert.equal(anon('auth.register', { name: 'Esposa', email: 'ela@gmail.com', password: 'senha-67890', confirm: 'senha-67890' }).error.code, 'DUPLICATE');
+    const adm = login('dono@gmail.com', 'senha-12345').data.token;
+    assert.equal(call('user.list', {}, adm).data.length, 1);
+    const pend = call('user.admin.list', {}, adm).data.find((u) => u.usuario === 'ela@gmail.com');
+    assert.equal(pend.status, 'pendente');
+    assert.equal(call('user.admin.set', { id: pend.id, status: 'ativo' }, adm).ok, true);
+    const ela = login('ela@gmail.com', 'senha-67890').data.token;
+    assert.equal(call('user.admin.list', {}, ela).error.code, 'FORBIDDEN');
+  });
+  ok('esqueci a senha: resposta igual p/ e-mail inexistente, código reset, derruba sessões', () => {
+    mails.length = 0;
+    assert.equal(anon('auth.forgot', { email: 'ninguem@gmail.com' }).data.sent, true);
+    assert.equal(mails.length, 0, 'não envia para e-mail não cadastrado');
+    const old = login('ela@gmail.com', 'senha-67890').data.token;
+    anon('auth.forgot', { email: 'ela@gmail.com' });
+    assert.equal(anon('auth.reset', { email: 'ela@gmail.com', code: '123456', password: 'nova-senha-1', confirm: 'nova-senha-1' }).error.code, 'BAD_CODE');
+    assert.equal(anon('auth.reset', { email: 'ela@gmail.com', code: lastCode(), password: 'nova-senha-1', confirm: 'nova-senha-1' }).data.ok, true);
+    assert.equal(call('auth.me', {}, old).error.code, 'UNAUTHORIZED');
+    assert.ok(login('ela@gmail.com', 'nova-senha-1').data.token);
+    assert.equal(login('ela@gmail.com', 'senha-67890').error.code, 'BAD_LOGIN');
+  });
+  sheets.Acessos.rows.splice(1); saved.forEach((r) => sheets.Acessos.rows.push(r));
+}
 console.log(`\n${n} grupos de testes do backend passaram.`);

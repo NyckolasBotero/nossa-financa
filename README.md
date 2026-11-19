@@ -15,8 +15,9 @@ App de finanças da casa (você + esposa). Front-end estático em **GitHub Pages
 1. **Planilha**: crie uma planilha vazia no Google Sheets.
 2. **Apps Script**: na planilha, *Extensões → Apps Script*. Apague o conteúdo do `Código.gs` padrão e cole todo o `backend/Code.gs`. Depois substitua o manifesto (*Configurações do projeto → mostrar appsscript.json*) pelo de `backend/appsscript.json`.
 3. **Serviço avançado**: em *Serviços*, adicione **Drive API (v2)** (usada para ler contracheques).
-5. Execute `setup()` e autorize. Ele cria as abas (incluindo **Acessos**), categorias padrão e a pasta no Drive. Recarregue a planilha: aparece o menu **Finanças → Gerenciar usuários**.
-5b. Em **Gerenciar usuários** crie o seu acesso (o primeiro é sempre administrador) e o da sua esposa. A senha é digitada num campo mascarado e nunca aparece na planilha. Ali também dá para redefinir senha, desativar/ativar e mudar o perfil (admin/membro). Desativar ou redefinir derruba as sessões abertas da pessoa. 8 senhas erradas bloqueiam o usuário por 15 min.
+5. Execute `setup()` e autorize (inclui permissão de enviar e-mail, usada nos códigos). Ele cria as abas (incluindo **Acessos**), categorias padrão e a pasta no Drive.
+5b. **Primeiro acesso:** abra o site, toque em **Criar conta** e cadastre nome, **o Gmail dono da planilha** e senha. Chega um código de 6 dígitos no e-mail; ao confirmar, essa conta vira **administradora** e já entra. As demais pessoas também usam **Criar conta**, mas ficam pendentes até você aprovar em *Configurações → Usuários e aprovações* (ou na planilha: menu Finanças → Gerenciar usuários).
+5c. **Esqueci a senha:** na tela de entrada, o app envia um código para o e-mail cadastrado e permite definir nova senha (derruba as sessões abertas). 8 senhas erradas bloqueiam o login por 15 min.
 6. **Implantar**: *Implantar → Nova implantação → App da Web*, executar como **você**, acesso **Qualquer pessoa**. Copie a URL `/exec`.
 7. **GitHub Pages**: suba esta pasta para um repositório, *Settings → Pages → branch main / root*.
 8. Abra o site em cada aparelho, cole a URL `/exec` (só na primeira vez) e entre com usuário e senha. Instale como app (Adicionar à tela inicial).
