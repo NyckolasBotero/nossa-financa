@@ -7,6 +7,7 @@
  * O token fica só no localStorage do aparelho e nunca é registrado em log.
  */
 import { CONFIG } from './config.js';
+import * as notify from './notify.js';
 
 const KEY = 'nf.conn';
 export class ApiError extends Error {
@@ -37,7 +38,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *   retries: repete só em falha de rede (use em leituras e em criações com clientId).
  *   timeout: ms; o OCR do contracheque pede mais que o padrão.
  */
-export async function call(action, payload = {}, { retries = 0, silent = false, conn, timeout = CONFIG.REQUEST_TIMEOUT_MS, anon = false } = {}) {
+async function raw(action, payload = {}, { retries = 0, silent = false, conn, timeout = CONFIG.REQUEST_TIMEOUT_MS, anon = false } = {}) {
   const { url, token } = conn || getConn();
   if (!url || (!token && !anon)) throw new ApiError('NOT_CONFIGURED', 'Entre no app com seu usuário e senha.');
   if (!silent) bump(1);
@@ -62,4 +63,22 @@ export async function call(action, payload = {}, { retries = 0, silent = false, 
       } finally { clearTimeout(timer); }
     }
   } finally { if (!silent) bump(-1); }
+}
+
+/**
+ * Chamada com feedback opcional na lateral: feedback = { start, text?, done: string | (data) => string | [titulo, texto], fail? }.
+ * Mostra "carregando" enquanto espera e depois "concluído" ou o erro.
+ */
+export async function call(action, payload = {}, opts = {}) {
+  const { feedback, ...rest } = opts;
+  const nt = feedback ? notify.start(feedback.start, feedback.text || '') : null;
+  try {
+    const data = await raw(action, payload, rest);
+    if (nt) {
+      const d = typeof feedback.done === 'function' ? feedback.done(data) : feedback.done;
+      const [t, x] = Array.isArray(d) ? d : [d || 'Pronto', ''];
+      nt.done(t, x);
+    }
+    return data;
+  } catch (e) { nt?.fail(feedback.fail || 'Não foi possível concluir', e.message); throw e; }
 }

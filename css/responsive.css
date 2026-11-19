@@ -13,7 +13,7 @@
   .topbar { padding: 10px 14px; gap: 10px; }
   .page-title { font-size: 1.15rem; flex: 1; margin: 0; }
   .top-tools { width: 100%; justify-content: space-between; }
-  .seg-scope { flex: 1; } .seg-scope .seg-i { flex: 1; } .seg-scope .seg-i span { text-align: center; padding: 7px 10px; }
+  .top-tools { flex-wrap: wrap; } .seg-scope { order: 3; flex: 1 1 100%; } .seg-scope .seg-i { flex: 1; } .seg-scope .seg-i span { text-align: center; padding: 7px 10px; }
   .m-label { min-width: 120px; }
   .view { padding: 6px 14px 130px; gap: 14px; }
   .h1 { font-size: 1.4rem; }

@@ -5,7 +5,7 @@
 import * as store from './store.js';
 import * as P from './projections.js';
 import { $, esc, icon, drop, pill, emptyState, brl, brlShort, fmtDate, monthShort, monthLabel } from './ui.js';
-import { barChart, donutChart, areaChart } from './charts.js';
+import { barChart, donutChart, areaChart, gauge, cup, bar } from './charts.js';
 import { insightsFor, insightCard } from './insights-view.js';
 import { txRow } from './transactions.js';
 
@@ -31,6 +31,17 @@ export function render(view) {
   const empty = !d.accounts.length || !d.transactions.length;
   $('#db-onboard', view).innerHTML = empty ? onboarding(d) : '';
 
+  // velocímetro de saúde financeira + copo da reserva
+  const hs = P.healthScore(d, today), glass = P.reserveGlass(d, today);
+  const tone = !hs.hasData ? 'var(--muted)' : hs.score >= 85 ? 'var(--income)' : hs.score >= 70 ? '#5fae4a' : hs.score >= 40 ? 'var(--warn)' : 'var(--expense)';
+  const basisText = glass.basis === 'goals' ? `da meta de ${brl(glass.target)} (suas metas)` : glass.basis === 'reserve3m' ? `de ${brl(glass.target)}: 3 meses de gastos` : '';
+  $('#db-hero', view).innerHTML = `<article class="card"><header class="card-h"><h3>Saúde financeira</h3><a class="muted small" href="#/planning">Planejamento</a></header>
+      <div class="health">${gauge({ score: hs.score, label: hs.label, hasData: hs.hasData, tone })}
+      <div class="health-parts">${hs.hasData ? hs.parts.map((p) => `<div class="hp"><div class="hp-h"><span>${esc(p.label)}</span><span>${p.score}</span></div>${bar(p.score / 100, p.score >= 70 ? 'ok' : p.score >= 40 ? 'warn' : 'over')}<small>${esc(p.detail)}</small></div>`).join('') : '<p class="muted">Lance receitas, despesas e cadastre as contas fixas: a nota aparece aqui, calculada só com os seus números.</p>'}</div></div></article>
+    <article class="card"><header class="card-h"><h3>Copo da reserva</h3><a class="muted small" href="#/goals">Metas</a></header>
+      <div class="cup-wrap">${cup(glass.level, { label: 'Reserva' })}
+      <div class="cup-info"><span class="cup-pct">${Math.round(glass.level * 100)}%</span><b>${esc(brl(glass.saved))} guardados</b>${basisText ? `<span class="muted">${esc(basisText)}</span>` : '<span class="muted">Crie uma meta (ou guarde dinheiro) e o copo começa a encher.</span>'}${glass.level >= 1 ? pill('Copo cheio! Meta atingida', 'ok') : ''}<a class="btn btn-soft sm" href="#/goals">Guardar dinheiro</a></div></div></article>`;
+
   const tot = P.monthTotals(d, month), bills = P.billsForMonth(d, month, today);
   const pend = bills.filter((x) => x.status === 'pending'), late = bills.filter((x) => x.status === 'late');
   const sumB = (l) => l.reduce((s, x) => s + x.bill.amount, 0);
@@ -43,6 +54,7 @@ export function render(view) {
     { l: 'Saldo após despesas', v: brl(tot.result), tone: tot.result >= 0 ? 'income' : 'expense', big: true },
     { l: 'Contas pendentes', v: brl(sumB(pend)), s: `${pend.length} conta${pend.length === 1 ? '' : 's'} a vencer`, tone: 'info', href: '#/fixed' },
     { l: 'Contas atrasadas', v: brl(sumB(late)), s: `${late.length} em atraso`, tone: late.length ? 'expense' : 'ok', href: '#/fixed' },
+    { l: 'Receitas fixas do mês', v: brl(P.billsForMonth(d, month, today, 'income').reduce((s, x) => s + x.bill.amount, 0)), s: 'Entradas previstas', tone: 'income', href: '#/fixed' },
     { l: 'Gasto fixo do mês', v: brl(sumB(bills)), s: `${bills.length} conta${bills.length === 1 ? '' : 's'} fixa${bills.length === 1 ? '' : 's'}`, tone: 'info', href: '#/fixed' },
     { l: 'Gastos individuais', v: brl(tot.individual), tone: 'violet' },
     { l: 'Gastos familiares', v: brl(tot.shared), s: 'Compartilhados', tone: 'violet' },

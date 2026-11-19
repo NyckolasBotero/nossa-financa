@@ -297,4 +297,23 @@ ok('usuário só altera o próprio nome', () => {
   });
   sheets.Acessos.rows.splice(1); saved.forEach((r) => sheets.Acessos.rows.push(r));
 }
+
+// ---- receita fixa, forma de pagamento
+ok('receita fixa: tipo, categoria e vínculo coerentes; forma de pagamento salva', () => {
+  const inc = call('fixedBill.create', { name: 'Salário', kind: 'income', amount: 5000, dueDay: 5, categoryId: cat('Salário'), accountId: acc.id, ownerId: me.id, method: 'Pix', startMonth: '2026-01' }, meTok);
+  assert.equal(inc.ok, true); assert.equal(inc.data.kind, 'income'); assert.equal(inc.data.method, 'Pix');
+  assert.equal(call('fixedBill.create', { name: 'Errada', kind: 'income', amount: 1, dueDay: 5, categoryId: cat('Mercado'), ownerId: me.id }, meTok).error.code, 'VALIDATION', 'categoria de despesa em receita');
+  assert.equal(call('fixedBill.create', { name: 'Crédito não recebe', kind: 'income', amount: 1, dueDay: 5, cardId: credit.id, ownerId: me.id }, meTok).error.code, 'VALIDATION');
+  assert.equal(call('fixedBill.create', { name: 'Salário', kind: 'expense', amount: 10, dueDay: 5, ownerId: me.id }, meTok).ok, true, 'mesmo nome em tipos diferentes é permitido');
+  assert.equal(call('fixedBill.create', { name: 'Sem tipo', amount: 10, dueDay: 5, ownerId: me.id }, meTok).data.kind, 'expense', 'padrão é conta fixa');
+  const tx = { date: '2026-11-06', amount: 5123.45, description: 'Salário fixo', accountId: acc.id, ownerId: me.id, fixedBillId: inc.data.id, method: 'Pix' };
+  assert.equal(call('tx.create', { ...tx, type: 'expense' }, meTok).error.code, 'VALIDATION', 'despesa não pode quitar receita fixa');
+  const ok1 = call('tx.create', { ...tx, type: 'income', clientId: 'rf1' }, meTok);
+  assert.equal(ok1.ok, true); assert.equal(ok1.data.method, 'Pix');
+});
+ok('formas de pagamento: lista salva, sem duplicar e limpa', () => {
+  const r = call('settings.save', { values: { paymentMethods: ['Pix', ' pix ', 'Boleto', '', 'Débito'] } }, meTok);
+  assert.deepEqual(r.data.paymentMethods, ['Pix', 'Boleto', 'Débito']);
+  assert.equal(call('settings.save', { values: { paymentMethods: 'x' } }, meTok).error.code, 'VALIDATION');
+});
 console.log(`\n${n} grupos de testes do backend passaram.`);

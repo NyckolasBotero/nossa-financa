@@ -15,7 +15,7 @@
 const APP = { name: 'Nossa Finança', version: '1.0.0', folderName: 'Nossa Finança - Comprovantes' };
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const UPLOAD_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-const ALLOWED_SETTINGS = ['budgetSplit', 'monitoredApps', 'incomeBase'];
+const ALLOWED_SETTINGS = ['budgetSplit', 'monitoredApps', 'incomeBase', 'paymentMethods'];
 
 /** Esquema de cada aba (a primeira coluna é sempre o id). */
 const SCHEMA = {
@@ -24,9 +24,9 @@ const SCHEMA = {
   Accounts: ['id', 'name', 'kind', 'ownerId', 'institution', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Cards: ['id', 'name', 'kind', 'ownerId', 'limit', 'closingDay', 'dueDay', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Categories: ['id', 'name', 'type', 'icon', 'color', 'tag', 'bucket', 'keywords', 'createdAt', 'updatedAt', 'archived'],
-  FixedBills: ['id', 'name', 'amount', 'dueDay', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'startMonth', 'endMonth', 'createdAt', 'updatedAt', 'archived'],
+  FixedBills: ['id', 'name', 'amount', 'dueDay', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'startMonth', 'endMonth', 'createdAt', 'updatedAt', 'archived', 'kind', 'method'],
   Goals: ['id', 'name', 'target', 'deadline', 'ownerId', 'scope', 'createdAt', 'updatedAt', 'archived'],
-  Transactions: ['id', 'clientId', 'date', 'type', 'amount', 'description', 'merchant', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'origin', 'fixedBillId', 'goalId', 'refMonth', 'notes', 'fingerprint', 'createdBy', 'createdAt', 'updatedAt', 'archived'],
+  Transactions: ['id', 'clientId', 'date', 'type', 'amount', 'description', 'merchant', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'origin', 'fixedBillId', 'goalId', 'refMonth', 'notes', 'fingerprint', 'createdBy', 'createdAt', 'updatedAt', 'archived', 'method'],
   Settings: ['key', 'value', 'updatedAt'],
   NotificationInbox: ['id', 'receivedAt', 'app', 'rawText', 'amount', 'merchant', 'institution', 'type', 'ownerId', 'suggestedCategoryId', 'status', 'fingerprint', 'transactionId', 'resolvedAt'],
   Attachments: ['id', 'transactionId', 'fileId', 'name', 'url', 'mime', 'size', 'createdAt', 'createdBy'],
@@ -44,7 +44,8 @@ const ENUMS = {
   bucket: ['bills', 'others', ''],
   scope: ['individual', 'shared'],
   txType: ['income', 'expense', 'card_payment', 'saving'],
-  origin: ['manual', 'notification', 'payslip', 'fixed', 'import']
+  origin: ['manual', 'notification', 'payslip', 'fixed', 'import'],
+  billKind: ['expense', 'income']
 };
 
 /** Regras de validação: t = tipo, req = obrigatório. */
@@ -68,7 +69,7 @@ const RULES = {
     name: { t: 'str', req: 1, max: 60, l: 'Nome' }, amount: { t: 'num', req: 1, min: 0.01, l: 'Valor' },
     dueDay: { t: 'int', req: 1, min: 1, max: 31, l: 'Dia de vencimento' }, categoryId: { t: 'str' }, accountId: { t: 'str' },
     cardId: { t: 'str' }, ownerId: { t: 'str', req: 1, l: 'Responsável' }, scope: { t: 'enum', v: ENUMS.scope },
-    startMonth: { t: 'month', l: 'Mês inicial' }, endMonth: { t: 'month', l: 'Mês final' }
+    startMonth: { t: 'month', l: 'Mês inicial' }, endMonth: { t: 'month', l: 'Mês final' }, kind: { t: 'enum', v: ENUMS.billKind, l: 'Tipo' }, method: { t: 'str', max: 30 }
   },
   Goals: {
     name: { t: 'str', req: 1, max: 60, l: 'Nome' }, target: { t: 'num', req: 1, min: 0.01, l: 'Valor da meta' },
@@ -79,7 +80,7 @@ const RULES = {
     amount: { t: 'num', req: 1, min: 0.01, l: 'Valor' }, description: { t: 'str', max: 120 }, merchant: { t: 'str', max: 80 },
     categoryId: { t: 'str' }, accountId: { t: 'str' }, cardId: { t: 'str' }, ownerId: { t: 'str', req: 1, l: 'Responsável' },
     scope: { t: 'enum', v: ENUMS.scope }, origin: { t: 'enum', v: ENUMS.origin }, fixedBillId: { t: 'str' }, goalId: { t: 'str' },
-    refMonth: { t: 'month' }, notes: { t: 'str', max: 500 }
+    refMonth: { t: 'month' }, notes: { t: 'str', max: 500 }, method: { t: 'str', max: 30, l: 'Forma de pagamento' }
   }
 };
 
@@ -445,9 +446,13 @@ function crossCheck_(name, o) {
   if (name === 'Accounts' || name === 'Cards') ownerOrFail_(o.ownerId, true);
   if (name === 'FixedBills' || name === 'Goals') ownerOrFail_(o.ownerId, false);
   if (name === 'FixedBills') {
-    if (o.categoryId) activeOrFail_('Categories', o.categoryId, 'Categoria');
+    const kind = o.kind || 'expense';
+    if (o.categoryId) { const cat = activeOrFail_('Categories', o.categoryId, 'Categoria'); if (cat.type !== kind) throw fail_('VALIDATION', 'A categoria não combina com o tipo (receita/despesa).'); }
     if (o.accountId) activeOrFail_('Accounts', o.accountId, 'Conta');
-    if (o.cardId) activeOrFail_('Cards', o.cardId, 'Cartão');
+    if (o.cardId) {
+      const cd = activeOrFail_('Cards', o.cardId, 'Cartão');
+      if (kind === 'income' && cd.kind === 'credit') throw fail_('VALIDATION', 'Receita não entra em cartão de crédito.');
+    }
   }
 }
 
@@ -456,7 +461,7 @@ function dupName_(name, o) {
   const n = String(o.name).trim().toLowerCase();
   const clash = readAll_(name).some(function (x) {
     return !x.archived && x.id !== o.id && String(x.name).trim().toLowerCase() === n &&
-      (name !== 'Categories' || x.type === o.type) && (name === 'Categories' || name === 'Goals' || name === 'FixedBills' || x.ownerId === o.ownerId);
+      (name !== 'Categories' || x.type === o.type) && (name !== 'FixedBills' || (x.kind || 'expense') === (o.kind || 'expense')) && (name === 'Categories' || name === 'Goals' || name === 'FixedBills' || x.ownerId === o.ownerId);
   });
   if (clash) throw fail_('DUPLICATE', 'Já existe um registro com esse nome.');
 }
@@ -470,6 +475,7 @@ function list_(name, p) {
 function create_(name, input, user) {
   const o = pick_(name, input);
   if (name === 'Categories' && o.bucket === undefined) o.bucket = '';
+  if (name === 'FixedBills' && !o.kind) o.kind = 'expense';
   validate_(name, o, false);
   crossCheck_(name, o); dupName_(name, o);
   const now = iso_();
@@ -545,7 +551,10 @@ function crossTx_(o) {
     const cat = activeOrFail_('Categories', o.categoryId, 'Categoria');
     if ((o.type === 'income' || o.type === 'expense') && cat.type !== o.type) throw fail_('VALIDATION', 'A categoria não combina com o tipo do lançamento.');
   }
-  if (o.fixedBillId) activeOrFail_('FixedBills', o.fixedBillId, 'Conta fixa');
+  if (o.fixedBillId) {
+    const fb = activeOrFail_('FixedBills', o.fixedBillId, 'Conta fixa');
+    if ((fb.kind || 'expense') !== o.type) throw fail_('VALIDATION', 'O lançamento não combina com o tipo da conta/receita fixa.');
+  }
   if (o.goalId) activeOrFail_('Goals', o.goalId, 'Meta');
   if (o.type === 'income' || o.type === 'expense') {
     if (!a && !c) throw fail_('VALIDATION', 'Escolha a conta ou o cartão.');
@@ -674,6 +683,13 @@ function settingsSave_(p, user) {
       if (Math.abs(nums[0] + nums[1] + nums[2] - 100) > 0.01) throw fail_('VALIDATION', 'Os percentuais precisam somar 100%.');
     }
     if (k === 'incomeBase' && ['received', 'expected'].indexOf(v) < 0) throw fail_('VALIDATION', 'Base de renda inválida.');
+    if (k === 'paymentMethods') {
+      if (!Array.isArray(v) || v.length > 20) throw fail_('VALIDATION', 'Lista de formas de pagamento inválida.');
+      const seen = {};
+      values[k] = v.map(function (x) { return String(x || '').trim().slice(0, 30); }).filter(function (x) {
+        const key = x.toLowerCase(); if (!x || seen[key]) return false; seen[key] = 1; return true;
+      });
+    }
     if (k === 'monitoredApps') {
       if (!Array.isArray(v) || v.length > 50) throw fail_('VALIDATION', 'Lista de apps inválida.');
       values[k] = v.map(function (a) { return { name: String(a.name || '').slice(0, 40), package: String(a.package || '').slice(0, 120) }; })

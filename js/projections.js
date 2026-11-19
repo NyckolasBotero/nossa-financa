@@ -123,19 +123,22 @@ export function creditUsed(d, card) {
 const billFrom = (b) => b.startMonth || ym(b.createdAt || '0000-01');
 export const billApplies = (b, m) => !b.archived && billFrom(b) <= m && (!b.endMonth || b.endMonth >= m);
 
+/** 'expense' (conta fixa) ou 'income' (receita fixa). Registros antigos, sem tipo, são contas. */
+export const billKind = (b) => (b.kind === 'income' ? 'income' : 'expense');
+
 export function billStatus(d, b, month, today) {
-  const paidTx = all(d).find((t) => t.fixedBillId === b.id && t.type === 'expense' && ym(t.date) === month);
+  const paidTx = all(d).find((t) => t.fixedBillId === b.id && t.type === billKind(b) && ym(t.date) === month);
   const due = dueDate(month, b.dueDay);
   if (paidTx) return { status: 'paid', due, tx: paidTx, lateDays: Math.max(0, diffDays(due, paidTx.date)) };
   const late = today > due;
   return { status: late ? 'late' : 'pending', due, tx: null, lateDays: late ? diffDays(due, today) : 0 };
 }
-export function billsForMonth(d, month, today) {
-  return d.fixedBills.filter((b) => billApplies(b, month))
+export function billsForMonth(d, month, today, kind = 'expense') {
+  return d.fixedBills.filter((b) => billKind(b) === kind && billApplies(b, month))
     .map((b) => ({ bill: b, ...billStatus(d, b, month, today) })).sort((a, b) => a.due.localeCompare(b.due));
 }
 /** Quantas vezes a conta foi paga depois do vencimento (ou segue em aberto vencida) nos últimos meses. */
-export function lateHistory(d, b, today, back = 6) {
+export function lateHistory(d, b, today, back = 6) {   // vale também para receitas fixas (recebidas fora do dia)
   const cur = ym(today); let late = 0, counted = 0;
   for (let i = -back; i <= 0; i++) {
     const m = addMonths(cur, i);
@@ -182,7 +185,10 @@ export function spendCurve(d, today, days = 30, txs = d.transactions) {
   });
 }
 
-/** Receitas recorrentes: aparecem em ao menos 2 dos 3 meses anteriores. */
+/**
+ * Receitas esperadas no mês: receitas FIXAS cadastradas (valor e dia certos) + receitas recorrentes
+ * detectadas no histórico (aparecem em ao menos 2 dos 3 meses anteriores, fora as ligadas a receita fixa).
+ */
 export function expectedIncome(d, today, txs = d.transactions) {
   const cur = ym(today), prev = [-3, -2, -1].map((i) => addMonths(cur, i));
   const key = (t) => `${norm(t.description || t.merchant)}|${t.categoryId || ''}`;
@@ -190,20 +196,40 @@ export function expectedIncome(d, today, txs = d.transactions) {
   const bank = txs.filter((t) => t.type === 'income' && !isFood(d, t));
   for (const t of bank) {
     const m = ym(t.date);
-    if (!prev.includes(m)) continue;
+    if (!prev.includes(m) || t.fixedBillId) continue;
     const g = groups.get(key(t)) || { key: key(t), label: t.description || t.merchant || 'Receita', byMonth: {} };
     g.byMonth[m] = (g.byMonth[m] || 0) + t.amount; groups.set(key(t), g);
   }
   const rec = [...groups.values()].filter((g) => Object.keys(g.byMonth).length >= 2).map((g) => {
     const vals = Object.values(g.byMonth);
-    const received = sum(bank.filter((t) => ym(t.date) === cur && key(t) === g.key), (t) => t.amount);
+    const received = sum(bank.filter((t) => ym(t.date) === cur && !t.fixedBillId && key(t) === g.key), (t) => t.amount);
     const expected = round2(vals.reduce((a, b) => a + b, 0) / vals.length);
-    return { key: g.key, label: g.label, expected, received, remaining: Math.max(0, round2(expected - received)) };
+    return { key: g.key, label: g.label, expected, received, remaining: Math.max(0, round2(expected - received)), fixed: false };
   });
+  const fx = billsForMonth(d, cur, today, 'income').map((x) => ({
+    key: `fixed:${x.bill.id}`, label: x.bill.name, expected: x.bill.amount, received: x.tx ? x.tx.amount : 0,
+    remaining: x.status === 'paid' ? 0 : x.bill.amount, fixed: true, due: x.due, status: x.status
+  }));
+  const recurringExpected = sum(rec, (g) => g.expected), fixedExpected = sum(fx, (g) => g.expected);
   return {
-    has: rec.length > 0, groups: rec, expected: sum(rec, (g) => g.expected), remaining: sum(rec, (g) => g.remaining),
+    has: rec.length > 0 || fx.length > 0, groups: [...fx, ...rec], expected: round2(recurringExpected + fixedExpected),
+    recurringExpected, fixedExpected, remaining: sum([...fx, ...rec], (g) => g.remaining),
     received: sum(bank.filter((t) => ym(t.date) === cur), (t) => t.amount)
   };
+}
+/** Receitas fixas ainda não recebidas com data até `to` (inclui as atrasadas). */
+export function pendingIncomeUntil(d, today, to) {
+  const out = [];
+  for (let m = addMonths(ym(today), -1); m <= ym(to); m = addMonths(m, 1)) {
+    for (const x of billsForMonth(d, m, today, 'income')) if (x.status !== 'paid' && x.due <= to && (m >= ym(today) || x.status === 'late')) out.push(x);
+  }
+  return out;
+}
+/** Entradas e saídas previstas nos próximos `days` dias (receitas fixas a receber × gastos previstos). */
+export function projectFlow(d, today, days, txs = d.transactions) {
+  const sp = projectSpend(d, today, days, txs), items = pendingIncomeUntil(d, today, addDays(today, days));
+  const income = sum(items, (x) => x.bill.amount);
+  return { days, income, incomeItems: items, spend: sp.total, net: round2(income - sp.total), lowConfidence: sp.lowConfidence };
 }
 
 /** Saldo estimado no fim do mês (conservador: gasto variável futuro é tratado como saída da conta). */
@@ -223,12 +249,27 @@ export function monthEnd(d, today, txs = d.transactions) {
   };
 }
 
-/** Estimativa do mês seguinte: receitas recorrentes − contas fixas − gasto variável médio. */
-export function nextMonth(d, today, txs = d.transactions) {
-  const next = addMonths(ym(today), 1), v = variableStats(d, txs, today), inc = expectedIncome(d, today, txs);
-  const fixed = sum(d.fixedBills.filter((b) => billApplies(b, next)), (b) => b.amount);
-  const variable = round2(v.daily * daysInMonth(next));
-  return { month: next, income: inc.expected, fixed, variable, leftover: round2(inc.expected - fixed - variable), lowConfidence: v.lowConfidence, hasIncomeHistory: inc.has };
+/** Estimativa do mês seguinte: receitas (fixas + recorrentes) − contas fixas − gasto variável médio. */
+export function nextMonth(d, today, txs = d.transactions) { return monthForecast(d, today, 1, txs); }
+
+/** Previsão de um mês futuro (n >= 1) com a mesma regra. */
+export function monthForecast(d, today, n, txs = d.transactions) {
+  const month = addMonths(ym(today), n), v = variableStats(d, txs, today), inc = expectedIncome(d, today, txs);
+  const fixedInc = sum(d.fixedBills.filter((b) => billKind(b) === 'income' && billApplies(b, month)), (b) => b.amount);
+  const income = round2(inc.recurringExpected + fixedInc);
+  const fixed = sum(d.fixedBills.filter((b) => billKind(b) === 'expense' && billApplies(b, month)), (b) => b.amount);
+  const variable = round2(v.daily * daysInMonth(month));
+  return { month, income, fixed, variable, expense: round2(fixed + variable), leftover: round2(income - fixed - variable),
+    lowConfidence: v.lowConfidence, hasIncomeHistory: inc.has || fixedInc > 0 };
+}
+
+/** Visão dos próximos meses: o mês atual (já com o que falta acontecer) e os seguintes. */
+export function outlook(d, today, months = 6, txs = d.transactions) {
+  const cur = monthResult(d, today, txs), curFixed = sum(d.fixedBills.filter((b) => billKind(b) === 'expense' && billApplies(b, ym(today))), (b) => b.amount);
+  const rows = [{ month: ym(today), income: cur.income, fixed: curFixed, expense: round2(cur.spent + cur.remainingVariable + cur.pendingFixed), leftover: cur.result, lowConfidence: cur.lowConfidence, current: true }];
+  for (let i = 1; i <= months; i++) rows.push({ ...monthForecast(d, today, i, txs), current: false });
+  let acc = 0; for (const r of rows) { acc = round2(acc + r.leftover); r.cumulative = acc; }
+  return rows;
 }
 
 /** Despesas que se repetem em ao menos 3 dos últimos 6 meses (assinaturas, mensalidades...). */
@@ -287,4 +328,39 @@ export function monthResult(d, today, txs = d.transactions) {
     income: round2(tot.income + inc.remaining), spent: tot.expense, remainingVariable: me.remainingVariable, pendingFixed: me.pendingFixed,
     result: round2(tot.income + inc.remaining - tot.expense - me.remainingVariable - me.pendingFixed), lowConfidence: me.lowConfidence, hasIncomeHistory: inc.has
   };
+}
+
+// ------------------------------------------------------------------ saúde financeira e reserva
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+/**
+ * Nota de 0 a 100 da saúde financeira do mês, em 4 partes transparentes:
+ *  guardado (30) · resultado do mês (30) · contas em dia (20) · peso das contas fixas na renda (20).
+ * Partes sem dados suficientes ficam de fora (o peso é redistribuído). Sem dados: hasData=false.
+ */
+export function healthScore(d, today, txs = d.transactions) {
+  const m = ym(today), tot = monthTotals(d, m, txs), res = monthResult(d, today, txs), b = budget(d, today, m, txs);
+  const income = Math.max(res.income, 0), parts = [];
+  if (b.base > 0) {
+    const target = b.rows[0].planned;
+    parts.push({ key: 'save', label: 'Guardado no mês', weight: 30, score: target > 0 ? clamp01(tot.saved / target) : 1, detail: `${Math.round(tot.saved)} de ${Math.round(target)} previstos (${b.split.reserve}% da renda)` });
+  }
+  if (income > 0) parts.push({ key: 'result', label: 'Resultado do mês', weight: 30, score: res.result >= 0 ? 1 : clamp01(1 + res.result / income), detail: res.result >= 0 ? 'Entradas cobrem os gastos' : 'Gastos passam das entradas' });
+  const bills = billsForMonth(d, m, today), late = bills.filter((x) => x.status === 'late').length;
+  if (bills.length) parts.push({ key: 'bills', label: 'Contas em dia', weight: 20, score: clamp01(1 - late * 0.34), detail: late ? `${late} conta(s) atrasada(s)` : 'Nenhuma atrasada' });
+  const fixedTotal = sum(bills, (x) => x.bill.amount);
+  if (income > 0 && bills.length) { const r = fixedTotal / income; parts.push({ key: 'fixed', label: 'Peso das contas fixas', weight: 20, score: r <= 0.5 ? 1 : clamp01(1 - (r - 0.5) / 0.5), detail: `${Math.round(r * 100)}% da renda (ideal até 50%)` }); }
+  const w = parts.reduce((a, p) => a + p.weight, 0);
+  const hasData = parts.length > 0 && (tot.income > 0 || tot.expense > 0 || income > 0);
+  const score = w ? Math.round(parts.reduce((a, p) => a + p.score * p.weight, 0) / w * 100) : 0;
+  const label = !hasData ? 'Sem dados' : score >= 85 ? 'Ótima' : score >= 70 ? 'Boa' : score >= 40 ? 'Regular' : 'Atenção';
+  return { score, label, hasData, parts: parts.map((p) => ({ ...p, score: Math.round(p.score * 100) })) };
+}
+
+/** Copo de reserva: quanto já foi guardado da meta (soma das metas ativas ou, sem metas, 3 meses de gastos). */
+export function reserveGlass(d, today) {
+  const saved = savedTotal(d), goalsTarget = sum(d.goals.filter((g) => !g.archived), (g) => g.target);
+  if (goalsTarget > 0) return { saved, target: goalsTarget, level: clamp01(saved / goalsTarget), basis: 'goals' };
+  const cur = ym(today), exp = [1, 2, 3].map((i) => monthTotals(d, addMonths(cur, -i), d.allTx || d.transactions).expense).filter((x) => x > 0);
+  if (exp.length) { const target = round2(3 * exp.reduce((a, b) => a + b, 0) / exp.length); return { saved, target, level: clamp01(saved / target), basis: 'reserve3m' }; }
+  return { saved, target: 0, level: 0, basis: 'none' };
 }

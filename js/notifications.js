@@ -21,7 +21,7 @@ function bump(from, to) {
   store.setInboxCounts(c);
 }
 async function resolve(n, status, transactionId = '') {
-  await api.call('inbox.resolve', { id: n.id, status, transactionId });
+  await api.call('inbox.resolve', { id: n.id, status, transactionId }, { feedback: { start: status === 'confirmed' ? 'Confirmando notificação…' : 'Guardando na lista reserva…', done: status === 'confirmed' ? 'Notificação confirmada' : 'Movida para a lista reserva' } });
   bump(n.status, status);
 }
 
@@ -81,7 +81,7 @@ export function openPasteModal() {
       { name: 'ownerId', label: 'De quem é', type: 'select', options: store.ownerOptions(), required: true }
     ],
     onSubmit: async (v, c) => {
-      const n = await api.call('inbox.add', { rawText: v.rawText, app: v.app, ownerId: v.ownerId, receivedAt: new Date().toISOString() });
+      const n = await api.call('inbox.add', { rawText: v.rawText, app: v.app, ownerId: v.ownerId, receivedAt: new Date().toISOString() }, { feedback: { start: 'Lendo a notificação…', done: 'Notificação adicionada à fila' } });
       if (n.duplicate) { toast('Essa notificação já estava na fila.', { kind: 'info' }); c.close(); return; }
       store.setInboxCounts({ ...store.state.inboxCounts, pending: store.state.inboxCounts.pending + 1 });
       toast(n.amount ? `Identifiquei ${brl(n.amount)}. Confirme na fila.` : 'Enviada. Não achei o valor, você pode informar ao confirmar.', { kind: 'ok' });

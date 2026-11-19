@@ -21,7 +21,7 @@ export function openPayslipModal() {
       const f = v.files[0];
       if (!f) throw new Error('Escolha o arquivo do contracheque.');
       const up = await prepareUpload(f);
-      const r = await api.call('payslip.parse', up, { timeout: 90000 });
+      const r = await api.call('payslip.parse', up, { timeout: 90000, feedback: { start: 'Lendo o contracheque…', text: 'Pode levar alguns segundos', done: 'Contracheque lido: confira os valores' } });
       c.close();
       openReview(r, v.ownerId);
     }

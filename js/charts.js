@@ -74,3 +74,36 @@ export function ring(pct, color = 'var(--brand)', text = '') {
 
 /** Barra de progresso HTML. status: ok | warn | over */
 export const bar = (ratio, status = 'ok') => `<div class="bar bar-${status}"><i style="width:${Math.max(0, Math.min(1, ratio)) * 100}%"></i></div>`;
+
+// ------------------------------------------------------------------ velocímetro (saúde financeira)
+const polar = (a, r) => [150 + r * Math.cos((a * Math.PI) / 180), 150 + r * Math.sin((a * Math.PI) / 180)];
+const arc = (s0, s1, r) => { const [x0, y0] = polar(180 + s0 * 1.8, r), [x1, y1] = polar(180 + s1 * 1.8, r); return `M${x0.toFixed(1)} ${y0.toFixed(1)}A${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`; };
+/** score 0-100; sem dados mostra o ponteiro parado em zero. */
+export function gauge({ score = 0, label = '', hasData = true, tone = 'var(--ink)' }) {
+  const segs = [[0, 40, '#f2677a'], [40, 70, '#f4a62a'], [70, 85, '#7ccf6a'], [85, 100, '#1fb58a']];
+  const s = hasData ? Math.max(0, Math.min(100, score)) : 0;
+  return `<svg class="gauge" viewBox="0 0 300 210" role="img" aria-label="Saúde financeira: ${hasData ? s + ' de 100, ' + esc(label) : 'sem dados'}">
+    <path class="g-track" d="${arc(0, 100, 120)}"/>
+    ${segs.map(([a, b, c]) => `<path class="g-seg" d="${arc(a + 0.6, b - 0.6, 120)}" stroke="${c}"/>`).join('')}
+    <text class="g-tick" x="30" y="172">0</text><text class="g-tick" x="270" y="172">100</text>
+    <g class="g-needle needle-in" style="transform:rotate(${(s * 1.8).toFixed(1)}deg)"><polygon class="g-needle-p" points="48,150 150,143 150,157"/></g>
+    <circle class="g-hub" cx="150" cy="150" r="11"/><circle cx="150" cy="150" r="4.5" fill="var(--surface)"/>
+    <text class="g-score" x="150" y="192">${hasData ? s : '—'}</text>
+    <text class="g-label" x="150" y="208" fill="${tone}">${esc(hasData ? label : 'Sem dados ainda')}</text></svg>`;
+}
+
+// ------------------------------------------------------------------ copo d'água (nível = progresso 0-1)
+let cupN = 0;
+export function cup(level, { label = '' } = {}) {
+  const id = `cup${++cupN}`, lv = Math.max(0, Math.min(1, level || 0)), top = 138 - lv * 120;
+  const wave = 'M0 6q15-9 30 0t30 0t30 0t30 0t30 0t30 0t30 0t30 0V160H0z';
+  return `<svg class="cup ${lv >= 1 ? 'full' : ''}" viewBox="0 0 120 150" role="img" aria-label="${label ? esc(label) + ': ' : ''}${Math.round(lv * 100)}% cheio">
+    <defs><clipPath id="${id}"><path d="M24 16h72l-8 116q-1 8-9 8H41q-8 0-9-8z"/></clipPath>
+    <linearGradient id="${id}w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--sky)"/><stop offset="1" stop-color="var(--brand)"/></linearGradient></defs>
+    <g clip-path="url(#${id})"><g class="c-fill fill-in" style="transform:translateY(${top.toFixed(1)}px)">
+      <rect x="0" y="6" width="120" height="150" fill="url(#${id}w)" class="c-water" style="fill:url(#${id}w)"/>
+      <g transform="translate(-8 -4)"><path class="c-wave1" d="${wave}"/></g><g transform="translate(-30 0)"><path class="c-wave2" d="${wave}"/></g>
+      <circle class="c-bubble" cx="48" cy="118" r="3"/><circle class="c-bubble" cx="70" cy="126" r="2.200"/><circle class="c-bubble" cx="86" cy="112" r="3.400"/></g></g>
+    <path class="c-glass" d="M24 16h72l-8 116q-1 8-9 8H41q-8 0-9-8z" style="fill:none"/>
+    <path class="c-shine" d="M34 26l6 88"/></svg>`;
+}

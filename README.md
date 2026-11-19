@@ -24,6 +24,14 @@ App de finanças da casa (você + esposa). Front-end estático em **GitHub Pages
 
 Depois de alterar o backend, faça **nova versão** da implantação.
 
+## Recursos de uso
+
+- **Paga com**: Pix, Débito e Crédito já vêm prontos; você cria outras formas em Configurações.
+- **Receitas fixas** (aba Fixas → Receitas fixas): entram na projeção de entradas dos próximos meses, junto com as contas fixas.
+- **Painel**: velocímetro de saúde financeira (nota 0–100 em 4 critérios) e copo da reserva que enche conforme você guarda dinheiro; cada meta também tem seu copo.
+- **Menu lateral**: clique para expandir com os nomes; no celular há barra inferior. Botão de tema claro/escuro.
+- **Feedback**: notificações laterais a cada ação (salvando, salvo, erro) e animação de carregamento com a logo no login.
+
 ## Regras de contabilidade
 - Cartão alimentação: fora do saldo bancário/receitas/despesas, contado só no indicador de alimentação.
 - Compra no crédito = despesa na data da compra; pagamento de fatura só baixa a conta.

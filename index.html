@@ -17,6 +17,8 @@
   <link rel="stylesheet" href="css/dashboard.css">
   <link rel="stylesheet" href="css/modals.css">
   <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/fx.css">
+  <script>try{var t=localStorage.getItem("nf.theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 </head>
 <body>
   <div id="busy" class="busy" aria-hidden="true"></div>
@@ -27,12 +29,14 @@
   <!-- Aplicativo -->
   <div id="app" class="app" hidden>
     <aside id="side" class="side" aria-label="Menu principal">
+      <div class="waves" aria-hidden="true"><svg class="wave w2" viewBox="0 0 2400 120" preserveAspectRatio="none"><path d="M0 60C150 0 450 120 600 60C750 0 1050 120 1200 60C1350 0 1650 120 1800 60C1950 0 2250 120 2400 60V120H0Z"/></svg><svg class="wave w3" viewBox="0 0 2400 120" preserveAspectRatio="none"><path d="M0 60C150 0 450 120 600 60C750 0 1050 120 1200 60C1350 0 1650 120 1800 60C1950 0 2250 120 2400 60V120H0Z"/></svg><svg class="wave w1" viewBox="0 0 2400 120" preserveAspectRatio="none"><path d="M0 60C150 0 450 120 600 60C750 0 1050 120 1200 60C1350 0 1650 120 1800 60C1950 0 2250 120 2400 60V120H0Z"/></svg></div>
       <div class="side-top">
-        <div class="brand"><span class="brand-mark" aria-hidden="true"><span></span></span><span class="brand-name">Nossa Finança</span></div>
+        <div class="brand"><span id="brand-logo" class="brand-logo"></span><span class="brand-name">Nossa Finança</span></div>
         <button id="side-toggle" class="btn-icon side-toggle" type="button" aria-expanded="false" aria-label="Expandir menu"></button>
       </div>
       <nav id="nav" class="nav"></nav>
       <div class="side-foot">
+        <button id="theme-side" class="nav-i" type="button" title="Alternar tema claro/escuro"></button>
         <button id="sync-btn" class="nav-i" type="button" title="Sincronizar agora"></button>
       </div>
     </aside>
@@ -43,6 +47,7 @@
         <button id="menu-btn" class="btn-icon menu-btn" type="button" aria-label="Abrir menu"></button>
         <h1 id="page-title" class="page-title">Painel</h1>
         <div class="top-tools">
+          <button id="theme-btn" class="btn-icon theme-btn" type="button" aria-label="Alternar tema claro/escuro" title="Tema claro/escuro"></button>
           <div id="scope" class="seg seg-scope" role="radiogroup" aria-label="Quem ver"></div>
           <div id="month-nav" class="month-nav" hidden>
             <button id="m-prev" class="btn-icon sm" type="button" aria-label="Mês anterior"></button>
@@ -63,6 +68,7 @@
       </div>
       <button id="fab-btn" class="fab-btn" type="button" aria-expanded="false" aria-label="Ações rápidas"></button>
     </div>
+    <nav id="tabbar" class="tabbar" aria-label="Navegação rápida"></nav>
   </div>
 
   <div id="toasts" aria-live="polite"></div>

@@ -3,6 +3,7 @@
  * Todas as telas montam seus formulários com formModal() para manter o mesmo comportamento.
  */
 import { esc, parseMoney, moneyInput } from './format.js';
+import * as notify from './notify.js';
 export * from './format.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -33,6 +34,8 @@ const ICONS = {
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   undo: '<path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/>',
+  sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.300v2.200M2.500 12h2.200M19.300 12h2.200M5.300 5.300l1.600 1.600M17.100 17.100l1.600 1.600M5.300 18.700l1.600-1.600M17.100 6.900l1.600-1.600"/>',
+  moon: '<path d="M20 14.500A8.500 8.500 0 0 1 9.500 4a8.500 8.500 0 1 0 10.500 10.500z"/>',
   wallet: '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18v3"/><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="16.5" cy="13.5" r="1.2"/>',
   paste: '<rect x="6" y="5" width="12" height="16" rx="2.5"/><path d="M9 5V3.5h6V5M9 11h6M9 15h4"/>'
 };
@@ -49,13 +52,11 @@ export const segmented = (name, options, value) =>
 export const amountClass = (t) => (t.type === 'income' ? 'pos' : t.type === 'expense' ? 'neg' : 'neu');
 
 // ------------------------------------------------------------------ feedback
-export function toast(msg, { kind = 'info', ms = 3600 } = {}) {
-  let box = $('#toasts');
-  if (!box) { box = h('<div id="toasts" aria-live="polite"></div>'); document.body.append(box); }
-  const t = h(`<div class="toast toast-${kind}" role="status">${esc(msg)}</div>`);
-  box.append(t);
-  requestAnimationFrame(() => t.classList.add('in'));
-  setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 300); }, ms);
+/** Aviso rápido. Vai para as notificações laterais; "ok" logo depois de um concluído é omitido (evita repetir). */
+export function toast(msg, { kind = 'info', ms = 4000 } = {}) {
+  const k = ['ok', 'err', 'warn'].includes(kind) ? kind : 'info';
+  if (k === 'ok' && notify.recentlyDone()) return;
+  notify.say(k, msg, '', k === 'err' ? Math.max(ms, 6000) : ms);
 }
 export function setBusy(on) { $('#busy')?.classList.toggle('on', on); }
 
@@ -138,12 +139,12 @@ const fieldHtml = (f, v) => {
  * onSubmit(values, ctl): async; se lançar erro, a mensagem aparece no topo do formulário.
  * onChange(name, ctl): chamado a cada alteração (para campos dependentes).
  */
-export function formModal({ title, fields, values = {}, submitLabel = 'Salvar', onSubmit, onChange, extra = [], wide = false, onOpen, belowTitle = '' }) {
+export function formModal({ title, fields, values = {}, submitLabel = 'Salvar', onSubmit, onChange, extra = [], wide = false, onOpen, onClose, belowTitle = '' }) {
   const form = h(`<form class="form" novalidate>${belowTitle}<div class="form-error" role="alert" hidden></div><div class="form-grid">${fields.map((f) => fieldHtml(f, values[f.name])).join('')}</div><div class="modal-f"></div></form>`);
   const footer = $('.modal-f', form);
   for (const x of extra) footer.append(h(`<button type="button" class="btn ${x.kind || 'btn-ghost'}" data-extra="${esc(x.id)}">${esc(x.label)}</button>`));
   footer.append(h('<span class="grow"></span>'), h('<button type="button" class="btn btn-ghost" data-cancel>Cancelar</button>'), h(`<button type="submit" class="btn btn-primary">${esc(submitLabel)}</button>`));
-  const modal = openModal({ title, body: form, wide });
+  const modal = openModal({ title, body: form, wide, onClose });
   const picked = {};          // arquivos escolhidos
   const byName = (n) => form.elements[n];
   const wrap = (n) => $(`[data-field="${n}"]`, form);

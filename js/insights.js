@@ -24,8 +24,12 @@ export function computeInsights(d, today, { inboxPending = 0 } = {}) {
     push('bad', 'late-now', `${late.length} conta${late.length > 1 ? 's' : ''} fixa${late.length > 1 ? 's' : ''} atrasada${late.length > 1 ? 's' : ''}`,
       `${late.map((x) => x.bill.name).join(', ')} somam ${brl(late.reduce((s, x) => s + x.bill.amount, 0))} em aberto.`, '#/fixed');
   }
+  // 1b. receitas fixas que deveriam ter caído e ainda não caíram
+  const lateInc = P.billsForMonth(d, cur, today, 'income').filter((x) => x.status === 'late');
+  if (lateInc.length) push('warn', 'late-income', `${lateInc.length} receita${lateInc.length > 1 ? 's' : ''} fixa${lateInc.length > 1 ? 's' : ''} ainda não recebida${lateInc.length > 1 ? 's' : ''}`,
+    `${lateInc.map((x) => x.bill.name).join(', ')} somam ${brl(lateInc.reduce((s, x) => s + x.bill.amount, 0))} previstos e não lançados. Confirme se já caiu e lance.`, '#/fixed');
   // 2. contas que atrasam com frequência
-  for (const b of d.fixedBills) {
+  for (const b of d.fixedBills.filter((x) => P.billKind(x) === 'expense')) {
     const h = P.lateHistory(d, b, today);
     if (h.counted >= LIMITS.lateBillMinMonths && h.late / h.counted >= LIMITS.lateBillMinRatio) {
       push('warn', `late-hist-${b.id}`, `${b.name} costuma atrasar`, `Foi paga depois do vencimento em ${h.late} de ${h.counted} meses. Considere antecipar o pagamento ou mudar o dia de vencimento.`, '#/fixed');

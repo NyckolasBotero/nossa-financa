@@ -5,7 +5,7 @@
 import * as store from './store.js';
 import * as P from './projections.js';
 import { $, esc, pill, emptyState, formModal, confirmDialog, toast, brl, fmtDate, uuid } from './ui.js';
-import { ring } from './charts.js';
+import { cup } from './charts.js';
 
 export function openGoalModal(goal = null) {
   const editing = !!goal;
@@ -56,7 +56,7 @@ export function render(view) {
       const months = Math.max(1, Math.ceil(P.diffDays(today, g.deadline) / 30));
       plan = g.deadline < today ? pill('Prazo vencido', 'bad') : `<p class="muted">Para chegar em ${esc(fmtDate(g.deadline))}, guarde cerca de <b>${esc(brl(left / months))}</b> por mês.</p>`;
     }
-    return `<article class="ent goal"><header class="ent-h"><div class="goal-ring">${ring(ratio, ratio >= 1 ? 'var(--income)' : 'var(--brand)')}</div><div><h3>${esc(g.name)}</h3><p class="muted">${esc(brl(saved))} de ${esc(brl(g.target))}</p></div>${g.scope === 'shared' ? pill('Compartilhada', 'info') : pill(store.userName(g.ownerId))}</header>
+    return `<article class="ent goal ${ratio >= 1 ? 'done' : ''}"><header class="ent-h"><div class="goal-cup">${cup(ratio, { label: g.name })}<b class="goal-pct">${Math.round(ratio * 100)}%</b></div><div><h3>${esc(g.name)}</h3><p class="muted">${esc(brl(saved))} de ${esc(brl(g.target))}</p></div>${g.scope === 'shared' ? pill('Compartilhada', 'info') : pill(store.userName(g.ownerId))}</header>
       ${ratio >= 1 ? pill('Meta atingida', 'ok') : `<p>Faltam <b>${esc(brl(left))}</b></p>`}${plan}
       <div class="ent-actions"><button class="btn btn-primary sm" data-save="${esc(g.id)}">Guardar</button><button class="btn btn-soft sm" data-edit="${esc(g.id)}">Editar</button><button class="btn btn-ghost sm" data-arch="${esc(g.id)}">Arquivar</button></div></article>`;
   }).join('') : `<div class="card">${emptyState('flag', 'Nenhuma meta ainda', 'Crie metas como reserva de emergência ou viagem e acompanhe o progresso.', '<button class="btn btn-primary" data-new>Criar meta</button>')}</div>`;

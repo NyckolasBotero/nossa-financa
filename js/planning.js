@@ -22,6 +22,14 @@ function budgetHtml(d, today, month) {
   }).join('');
 }
 
+function outlookHtml(d, today) {
+  const rows = P.outlook(d, today, 6);
+  if (!rows.some((r) => r.income > 0 || r.fixed > 0)) return emptyState('calendar', 'Cadastre receitas e contas fixas', 'Com elas o app projeta quanto entra, quanto sai e quanto sobra nos próximos meses.', '<a class="btn btn-primary" href="#/fixed">Ir para fixas</a>');
+  const low = rows.some((r) => r.lowConfidence);
+  return `<div class="table-wrap"><table class="tbl"><thead><tr><th>Mês</th><th class="num">Entradas</th><th class="num">Contas fixas</th><th class="num">Saídas totais</th><th class="num">Sobra</th><th class="num">Acumulado</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(monthLabel(r.month))}${r.current ? ' <small class="muted">(mês atual)</small>' : ''}</td><td class="num pos">${esc(brl(r.income))}</td><td class="num">${esc(brl(r.fixed))}</td><td class="num">${esc(brl(r.expense))}</td><td class="num ${r.leftover >= 0 ? 'pos' : 'neg'}"><b>${esc(brl(r.leftover))}</b></td><td class="num ${r.cumulative >= 0 ? 'pos' : 'neg'}">${esc(brl(r.cumulative))}</td></tr>`).join('')}</tbody></table></div>
+  <p class="muted small">Entradas = receitas fixas + recorrentes dos últimos meses. Saídas = contas fixas + gasto variável médio. ${low ? 'Ainda há pouco histórico de gastos: trate como estimativa.' : ''}</p>`;
+}
+
 function projectionHtml(d, today) {
   const me = P.monthEnd(d, today), res = P.monthResult(d, today), nm = P.nextMonth(d, today), inc = P.expectedIncome(d, today);
   const spans = [7, 15, 30].map((n) => P.projectSpend(d, today, n));
@@ -41,6 +49,9 @@ function projectionHtml(d, today) {
     <h4 class="sub-h">Gasto estimado</h4>
     <div class="kpi-row">${spans.map((s) => tile(`Próximos ${s.days} dias`, brl(s.total), `${brl(s.variable)} variável + ${brl(s.fixed)} em contas fixas`)).join('')}</div>
     <div class="chart-wrap">${areaChart({ points: curve.map((p) => ({ label: fmtDate(p.date).slice(0, 5), value: p.value })), color: 'var(--expense)', label: 'Gasto acumulado previsto nos próximos 30 dias' })}</div>
+    <h4 class="sub-h">Entradas x saídas previstas</h4>
+    <div class="kpi-row">${[7, 15, 30].map((n) => { const f = P.projectFlow(d, today, n); return tile(`Próximos ${n} dias`, `${f.net >= 0 ? '+' : '−'} ${brl(Math.abs(f.net))}`, `Entra ${brl(f.income)} (receitas fixas) · sai ${brl(f.spend)}`, f.net < 0 ? 'bad' : 'ok'); }).join('')}</div>
+    <h4 class="sub-h">Próximos meses</h4>${outlookHtml(d, today)}
     <h4 class="sub-h">Fim do mês</h4>
     <div class="kpi-row">
       ${tile('Saldo estimado no fim do mês', brl(me.projected), `Faltam ${me.daysLeft} dias · hoje ${brl(me.balance)}`, me.projected < 0 ? 'bad' : '')}

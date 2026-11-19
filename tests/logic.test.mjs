@@ -172,4 +172,57 @@ ok('resultado projetado do mês', () => {
   assert.equal(r.result, Math.round((5000 - t.expense - me.remainingVariable - me.pendingFixed) * 100) / 100);
 });
 ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-zç-]+, 03\/11$/));
+
+// ---- receitas fixas, projeção de entradas, nota de saúde e copo
+{
+  const sal = { id: 'i1', kind: 'income', name: 'Salário', amount: 5000, dueDay: 5, ownerId: 'u1', startMonth: '2026-09', createdAt: '2026-09-01T00:00:00Z' };
+  const aluguel = { id: 'i2', kind: 'income', name: 'Aluguel recebido', amount: 800, dueDay: 25, ownerId: 'u1', startMonth: '2026-11', createdAt: '2026-11-01T00:00:00Z' };
+  const st2 = { ...state, fixedBills: [...state.fixedBills, sal, aluguel] };
+  const d2 = P.scoped(st2, 'family');
+  ok('receita fixa não vira conta fixa nem atrasa as contas', () => {
+    assert.equal(P.billsForMonth(d2, '2026-11', TODAY).length, 1);
+    assert.equal(P.billsForMonth(d2, '2026-11', TODAY, 'income').length, 2);
+    assert.equal(P.billKind({}), 'expense');
+    assert.equal(P.projectSpend(d2, TODAY, 30).fixed, P.projectSpend(d, TODAY, 30).fixed);
+  });
+  ok('receita fixa recebida/atrasada e projeção de entradas', () => {
+    const rows = P.billsForMonth(d2, '2026-11', TODAY, 'income');
+    const aluguelRow = rows.find((x) => x.bill.id === 'i2');
+    assert.equal(aluguelRow.status, 'pending');
+    const inc = P.expectedIncome(d2, TODAY);
+    assert.ok(inc.groups.some((g) => g.fixed && g.label === 'Aluguel recebido'));
+    assert.ok(inc.remaining >= 800, 'o que falta receber inclui a receita fixa pendente');
+    const f = P.projectFlow(d2, TODAY, 30);
+    assert.ok(f.incomeItems.some((x) => x.bill.id === 'i2'));
+    assert.equal(P.projectFlow(d, TODAY, 30).income, 0, 'sem receita fixa cadastrada não inventa entrada');
+  });
+  ok('receita fixa paga (lançamento vinculado) sai do que falta receber', () => {
+    const pay = tx('2026-11-25', 'income', 800, { fixedBillId: 'i2', description: 'Aluguel recebido' });
+    const d3 = P.scoped({ ...st2, transactions: [...T, pay] }, 'family');
+    assert.equal(P.billsForMonth(d3, '2026-11', TODAY, 'income').find((x) => x.bill.id === 'i2').status, 'paid');
+    assert.equal(P.pendingIncomeUntil(d3, TODAY, '2026-11-30').some((x) => x.bill.id === 'i2'), false);
+  });
+  ok('previsão dos próximos meses usa receitas e contas fixas', () => {
+    const o = P.outlook(d2, TODAY, 6);
+    assert.equal(o.length, 7); assert.equal(o[0].current, true);
+    assert.equal(o[1].month, '2026-12'); assert.equal(o[1].income >= 5800, true);
+    assert.equal(o[1].fixed, 1500);
+    assert.equal(o[6].cumulative, Math.round(o.reduce((a, r) => a + r.leftover, 0) * 100) / 100);
+  });
+  ok('nota de saúde financeira: transparente e limitada a 0-100', () => {
+    const h = P.healthScore(d2, TODAY);
+    assert.ok(h.score >= 0 && h.score <= 100); assert.ok(h.parts.length >= 2);
+    assert.ok(['Atenção', 'Regular', 'Boa', 'Ótima'].includes(h.label));
+    const empty = P.healthScore(P.scoped({ ...state, transactions: [], fixedBills: [] }, 'family'), TODAY);
+    assert.equal(empty.hasData, false); assert.equal(empty.label, 'Sem dados');
+  });
+  ok('copo de reserva: metas ou 3 meses de gastos', () => {
+    const g = P.reserveGlass(d2, TODAY);
+    assert.equal(g.basis, 'goals'); assert.equal(g.target, 10000); assert.equal(g.level, g.saved / 10000);
+    const none = P.reserveGlass(P.scoped({ ...state, goals: [], transactions: [] }, 'family'), TODAY);
+    assert.equal(none.basis, 'none'); assert.equal(none.level, 0);
+    const r3 = P.reserveGlass(P.scoped({ ...state, goals: [] }, 'family'), TODAY);
+    assert.ok(r3.basis === 'reserve3m' || r3.basis === 'none');
+  });
+}
 console.log(`\n${n} grupos de testes de lógica passaram.`);

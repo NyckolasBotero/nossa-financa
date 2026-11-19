@@ -1,6 +1,10 @@
 <section class="page-head">
-  <div><h2 class="h1">Contas fixas</h2><p class="muted">Compromissos de <span id="fx-month"></span>. Pagar uma conta cria o lançamento e marca como paga.</p></div>
-  <div class="head-actions"><button id="fx-new" class="btn btn-primary" type="button">Nova conta fixa</button></div>
+  <div><h2 class="h1" id="fx-title">Contas fixas</h2><p class="muted" id="fx-sub"></p></div>
+  <div class="head-actions"><button id="fx-new" class="btn btn-primary" type="button"></button></div>
 </section>
+<div class="seg" id="fx-tabs" role="tablist" aria-label="Tipo">
+  <label class="seg-i"><input type="radio" name="fxk" value="expense" checked><span>Contas fixas (saídas)</span></label>
+  <label class="seg-i"><input type="radio" name="fxk" value="income"><span>Receitas fixas (entradas)</span></label>
+</div>
 <div id="fx-summary" class="kpi-row"></div>
 <div id="fx-list" class="bill-list"></div>

@@ -9,7 +9,7 @@ export const ROUTES = [
   { id: 'dashboard', label: 'Painel', icon: 'dashboard', module: 'dashboard', month: true },
   { id: 'extract', label: 'Extrato', icon: 'extract', module: 'transactions', month: true },
   { id: 'inbox', label: 'Notificações', icon: 'bell', module: 'notifications' },
-  { id: 'fixed', label: 'Contas fixas', icon: 'calendar', module: 'fixedbills', month: true },
+  { id: 'fixed', label: 'Fixas', icon: 'calendar', module: 'fixedbills', month: true },
   { id: 'accounts', label: 'Contas', icon: 'bank', module: 'accounts' },
   { id: 'cards', label: 'Cartões', icon: 'card', module: 'cards' },
   { id: 'planning', label: 'Planejamento', icon: 'target', module: 'planning', month: true },
@@ -71,8 +71,15 @@ export const refresh = () => (view ? show(true) : null);
 export function navigate(id) { if (location.hash === `#/${id}`) refresh(); else location.hash = `#/${id}`; }
 
 export function renderNav(container) {
-  container.innerHTML = ROUTES.map((r) => `<a class="nav-i" href="#/${r.id}" data-route="${r.id}" title="${esc(r.label)}">${icon(r.icon)}<span class="nav-l">${esc(r.label)}</span><span class="nav-badge" data-badge="${r.id}" hidden></span></a>`).join('');
+  container.innerHTML = ROUTES.map((r, i) => `<a class="nav-i" style="--i:${i}" href="#/${r.id}" data-route="${r.id}" title="${esc(r.label)}">${icon(r.icon)}<span class="nav-l">${esc(r.label)}</span><span class="nav-badge" data-badge="${r.id}" hidden></span></a>`).join('');
 }
 export function markActive(route) {
-  $$('.nav-i').forEach((a) => a.classList.toggle('on', a.dataset.route === route.id));
+  $$('.nav-i[data-route], .tab-i[data-route]').forEach((a) => a.classList.toggle('on', a.dataset.route === route.id));
+}
+
+/** Barra inferior do celular: as 4 telas mais usadas + "Mais" (abre o menu completo). */
+export const TAB_ROUTES = ['dashboard', 'extract', 'fixed', 'goals'];
+export function renderTabbar(container) {
+  container.innerHTML = TAB_ROUTES.map((id) => { const r = ROUTES.find((x) => x.id === id); return `<a class="tab-i" href="#/${r.id}" data-route="${r.id}">${icon(r.icon)}<span>${esc(r.label)}</span></a>`; }).join('')
+    + `<button class="tab-i" type="button" data-more>${icon('menu')}<span>Mais</span></button>`;
 }

@@ -20,7 +20,7 @@
 .pill-warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: #b77905; }
 .pill-bad { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
 .pill-info { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
-@media (prefers-color-scheme: dark) { .pill-warn { color: var(--warn); } }
+:root[data-theme="dark"] .pill-warn { color: var(--warn); }
 .count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--expense); color: #fff; font-size: .7rem; font-weight: 800; }
 
 .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 28px 12px; }
@@ -83,7 +83,7 @@
 .bill.st-paid { border-left-color: var(--ok); } .bill.st-late { border-left-color: var(--bad); }
 .bill-main h3 { font-size: 1.02rem; } .bill-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font: 700 1.05rem var(--font-d); }
 .bill-a { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; } .hint-warn { color: #b77905; font-size: .82rem; font-weight: 800; }
-@media (prefers-color-scheme: dark) { .hint-warn { color: var(--warn); } }
+:root[data-theme="dark"] .hint-warn { color: var(--warn); }
 
 /* insights */
 .insight-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }

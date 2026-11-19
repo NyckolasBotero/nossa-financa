@@ -25,7 +25,7 @@ async function renderUsers(view) {
   $('#st-users', view).addEventListener('click', async (e) => {
     const b = e.target.closest('[data-st]'); if (!b) return;
     const [id, status] = b.dataset.st.split('|');
-    try { draw(await api.call('user.admin.set', { id, status })); toast('Atualizado.', { kind: 'ok' }); } catch (err) { toast(err.message, { kind: 'err' }); }
+    try { draw(await api.call('user.admin.set', { id, status }, { feedback: { start: 'Atualizando acesso…', done: 'Acesso atualizado' } })); } catch (err) { /* o aviso de erro já aparece na lateral */ }
   });
 }
 

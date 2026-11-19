@@ -59,7 +59,7 @@ export async function load() {
 export async function sync({ force = false, minInterval = 30000 } = {}) {
   if (!state.loaded || (!force && Date.now() - lastSync < minInterval)) return false;
   const since = new Date(Date.parse(state.serverTime) - 5000).toISOString();
-  const r = await api.call('sync', { since }, { silent: !force, retries: 1 });
+  const r = await api.call('sync', { since }, { silent: !force, retries: 1, ...(force ? { feedback: { start: 'Sincronizando…', done: 'Dados atualizados' } } : {}) });
   for (const k of Object.keys(KIND)) (r[k] || []).forEach((rec) => upsert(k, rec));
   Object.assign(state, { users: r.users, settings: r.settings, inboxCounts: r.inboxCounts, serverTime: r.serverTime });
   lastSync = Date.now();
@@ -67,24 +67,48 @@ export async function sync({ force = false, minInterval = 30000 } = {}) {
   return true;
 }
 
+const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+/** Textos das notificações laterais para cada operação. */
+function fb(kind, verb, p = {}) {
+  const money = p.amount ? BRL.format(p.amount) : '';
+  const what = p.description || p.name || '';
+  const sub = [money, what].filter(Boolean).join(' · ');
+  if (kind === 'transactions') {
+    const t = p.type;
+    if (verb === 'create') {
+      const m = t === 'income' ? ['Lançando receita…', 'Receita lançada'] : t === 'saving' ? ['Guardando valor…', 'Valor guardado'] : t === 'card_payment' ? ['Pagando fatura…', 'Fatura paga'] : ['Lançando despesa…', 'Despesa lançada'];
+      return { start: m[0], text: sub, done: () => [m[1], sub] };
+    }
+    if (verb === 'update') return { start: 'Salvando alterações…', done: () => ['Lançamento atualizado', sub] };
+    return { start: 'Excluindo lançamento…', done: 'Lançamento excluído' };
+  }
+  const N = { accounts: ['conta', 'Conta', 'f'], cards: ['cartão', 'Cartão', 'm'], categories: ['categoria', 'Categoria', 'f'], goals: ['meta', 'Meta', 'f'] };
+  let [low, cap, g] = N[kind] || ['registro', 'Registro', 'm'];
+  if (kind === 'fixedBills') { [low, cap, g] = p.kind === 'income' ? ['receita fixa', 'Receita fixa', 'f'] : ['conta fixa', 'Conta fixa', 'f']; }
+  const ed = g === 'f' ? 'criada' : 'criado', sv = g === 'f' ? 'atualizada' : 'atualizado', ar = g === 'f' ? 'arquivada' : 'arquivado';
+  if (verb === 'create') return { start: `Criando ${low}…`, text: what, done: () => [`${cap} ${ed}`, what] };
+  if (verb === 'update') return { start: `Salvando ${low}…`, text: what, done: () => [`${cap} ${sv}`, what] };
+  return { start: `Arquivando ${low}…`, done: `${cap} ${ar}` };
+}
+
 export async function create(kind, payload, opts) {
-  const rec = clean(await api.call(`${KIND[kind]}.create`, payload, { retries: payload.clientId ? 1 : 0, ...opts }));
+  const rec = clean(await api.call(`${KIND[kind]}.create`, payload, { retries: payload.clientId ? 1 : 0, feedback: fb(kind, 'create', payload), ...opts }));
   upsert(kind, rec); emit(); return rec;
 }
 export async function update(kind, payload, opts) {
-  const rec = clean(await api.call(`${KIND[kind]}.update`, payload, opts));
+  const rec = clean(await api.call(`${KIND[kind]}.update`, payload, { feedback: fb(kind, 'update', payload), ...opts }));
   upsert(kind, rec); emit(); return rec;
 }
 export async function remove(kind, id) {
-  const rec = await api.call(`${KIND[kind]}.remove`, { id });
+  const rec = await api.call(`${KIND[kind]}.remove`, { id }, { feedback: fb(kind, 'remove', { id }) });
   upsert(kind, rec); emit(); return rec;
 }
 export async function saveSettings(values) {
-  state.settings = await api.call('settings.save', { values });
+  state.settings = await api.call('settings.save', { values }, { feedback: { start: 'Salvando configurações…', done: 'Configurações salvas' } });
   emit(); return state.settings;
 }
 export async function renameMe(name) {
-  const u = await api.call('user.update', { name });
+  const u = await api.call('user.update', { name }, { feedback: { start: 'Salvando seu nome…', done: 'Nome atualizado' } });
   state.users = state.users.map((x) => (x.id === u.id ? u : x)); state.me = u; emit();
 }
 export function setInboxCounts(c) { state.inboxCounts = c; emit(); }
@@ -107,3 +131,16 @@ export function sourceOptions({ type = 'expense' } = {}) {
 }
 export const categoryOptions = (type) => activeOf('categories').filter((c) => c.type === type).map((c) => ({ value: c.id, label: `${c.icon || ''} ${c.name}`.trim() }));
 export const sourceLabel = (t) => (t.accountId ? byId('accounts', t.accountId)?.name : t.cardId ? byId('cards', t.cardId)?.name : '') || '';
+
+// ---- forma de pagamento (Pix, Débito, Crédito + as que a pessoa criar)
+export const DEFAULT_METHODS = ['Pix', 'Débito', 'Crédito'];
+export const paymentMethods = () => (state.settings?.paymentMethods?.length ? state.settings.paymentMethods : DEFAULT_METHODS);
+export const NEW_METHOD = '__new__';
+export const methodOptions = () => [...paymentMethods().map((m) => ({ value: m, label: m })), { value: NEW_METHOD, label: '＋ Nova forma de pagamento…' }];
+export async function addMethod(name) {
+  const n = String(name || '').trim().slice(0, 30);
+  if (!n) throw new Error('Informe o nome.');
+  if (paymentMethods().some((m) => m.toLowerCase() === n.toLowerCase())) return paymentMethods().find((m) => m.toLowerCase() === n.toLowerCase());
+  await saveSettings({ paymentMethods: [...paymentMethods(), n] });
+  return n;
+}
