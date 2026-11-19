@@ -48,7 +48,8 @@ export function render(view) {
   });
   $('#st-sync', view).addEventListener('click', async () => { try { await store.sync({ force: true }); toast('Dados sincronizados.', { kind: 'ok' }); } catch (e) { toast(e.message, { kind: 'err' }); } });
   $('#st-logout', view).addEventListener('click', async () => {
-    if (!(await confirmDialog({ title: 'Desconectar este aparelho', text: 'O token é removido daqui. Seus dados continuam na planilha.', okLabel: 'Desconectar', danger: true }))) return;
+    if (!(await confirmDialog({ title: 'Sair deste aparelho', text: 'Sua sessão é encerrada. Seus dados continuam na planilha.', okLabel: 'Sair', danger: true }))) return;
+    try { await api.call('auth.logout', {}, { silent: true }); } catch { /* sessão já expirada */ }
     api.clearConn(); location.reload();
   });
 }

@@ -26,12 +26,13 @@
     <form id="connect-form" class="connect-card" novalidate>
       <div class="brand-mark" aria-hidden="true"><span></span></div>
       <h1>Nossa Finança</h1>
-      <p class="muted">Conecte este aparelho ao seu Google Apps Script. Os dados ficam na sua planilha.</p>
+      <p class="muted">Entre com o usuário e a senha criados na planilha. Os dados ficam na sua planilha.</p>
       <div class="form-error" id="connect-error" role="alert" hidden></div>
       <div class="field"><label for="c-url">URL do Web App</label><input id="c-url" name="url" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" required></div>
-      <div class="field"><label for="c-token">Seu token de acesso</label><input id="c-token" name="token" type="password" placeholder="Token gerado no setup()" autocomplete="off" required></div>
-      <button class="btn btn-primary btn-block" type="submit">Conectar</button>
-      <p class="hint">O token fica apenas neste aparelho. Cada pessoa usa o seu.</p>
+      <div class="field"><label for="c-user">Usuário</label><input id="c-user" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+      <div class="field"><label for="c-pass">Senha</label><input id="c-pass" name="password" type="password" autocomplete="current-password" required></div>
+      <button class="btn btn-primary btn-block" type="submit">Entrar</button>
+      <p class="hint">A senha não é guardada no aparelho; só uma sessão que expira em 30 dias.</p>
     </form>
   </section>
 

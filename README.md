@@ -2,7 +2,7 @@
 
 App de finanças da casa (você + esposa). Front-end estático em **GitHub Pages**, banco em **Google Sheets**, backend em **Google Apps Script**, comprovantes no **Google Drive**.
 
-> Nenhuma credencial vai para o GitHub. A URL do Web App e o token de cada pessoa ficam só no navegador/aparelho (localStorage), digitados na tela de conexão.
+> Nenhuma credencial vai para o GitHub. Cada pessoa entra com **usuário e senha** cadastrados na planilha. A senha nunca é guardada (só hash com sal); o aparelho guarda apenas a URL e uma sessão de 30 dias.
 
 ## Estrutura
 - `index.html`, `css/`, `js/`, `pages/`, `sw.js`, `manifest.json`, `assets/` — front-end (módulos ES, sem build).
@@ -15,11 +15,11 @@ App de finanças da casa (você + esposa). Front-end estático em **GitHub Pages
 1. **Planilha**: crie uma planilha vazia no Google Sheets.
 2. **Apps Script**: na planilha, *Extensões → Apps Script*. Apague o conteúdo do `Código.gs` padrão e cole todo o `backend/Code.gs`. Depois substitua o manifesto (*Configurações do projeto → mostrar appsscript.json*) pelo de `backend/appsscript.json`.
 3. **Serviço avançado**: em *Serviços*, adicione **Drive API (v2)** (usada para ler contracheques).
-4. **Nomes**: no próprio `Code.gs` (seção SETUP), ajuste `FAMILY_MEMBERS` (nome e e-mail de cada pessoa).
-5. Execute `setup()` e autorize. Ele cria as 11 abas, categorias padrão, pasta no Drive e os usuários. **Os tokens aparecem uma única vez em *Execuções/Logger*** — copie um para cada pessoa. Só o hash é guardado na planilha. Para trocar: `rotateTokens()`.
+5. Execute `setup()` e autorize. Ele cria as abas (incluindo **Acessos**), categorias padrão e a pasta no Drive. Recarregue a planilha: aparece o menu **Finanças → Gerenciar usuários**.
+5b. Em **Gerenciar usuários** crie o seu acesso (o primeiro é sempre administrador) e o da sua esposa. A senha é digitada num campo mascarado e nunca aparece na planilha. Ali também dá para redefinir senha, desativar/ativar e mudar o perfil (admin/membro). Desativar ou redefinir derruba as sessões abertas da pessoa. 8 senhas erradas bloqueiam o usuário por 15 min.
 6. **Implantar**: *Implantar → Nova implantação → App da Web*, executar como **você**, acesso **Qualquer pessoa**. Copie a URL `/exec`.
 7. **GitHub Pages**: suba esta pasta para um repositório, *Settings → Pages → branch main / root*.
-8. Abra o site em cada aparelho, cole a URL `/exec` e o token da pessoa. Instale como app (Adicionar à tela inicial).
+8. Abra o site em cada aparelho, cole a URL `/exec` (só na primeira vez) e entre com usuário e senha. Instale como app (Adicionar à tela inicial).
 
 Depois de alterar o backend, faça **nova versão** da implantação.
 
@@ -37,3 +37,8 @@ Depois de alterar o backend, faça **nova versão** da implantação.
 - Leitura de contracheque e de notificações são **heurísticas**; você sempre confirma antes de salvar. Não foram testadas com contracheques reais.
 - O backend foi testado com simulações, **não implantado de verdade**. Teste com dados reais em pequena escala primeiro.
 - Sem fila offline: sem internet, lançamentos não são salvos.
+
+## Segurança
+- Mantenha a planilha **privada** (só você). Quem edita a planilha pode gerenciar usuários e ler os hashes (colunas ocultas em Acessos).
+- Senhas: hash SHA-256 com sal e 3000 rodadas (o Apps Script não tem bcrypt); use senhas longas.
+- A URL `/exec` é pública, mas sem login não entrega dados.

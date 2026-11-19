@@ -3,12 +3,13 @@
  *
  * Web App do Apps Script. Implantar como:
  *   Executar como: Eu  |  Quem pode acessar: Qualquer pessoa
- * O acesso aos dados é protegido por TOKEN (um por pessoa), validado em toda chamada.
+ * Acesso: login (usuário + senha) cadastrado na aba "Acessos". A senha nunca é guardada: só hash com sal.
+ * O login devolve um token de sessão; ele é validado em toda chamada. Usuários são geridos pelo menu "Finanças" da planilha.
  * O front envia POST com Content-Type text/plain (evita preflight CORS) e corpo JSON:
  *   { "action": "tx.create", "token": "...", "payload": { ... } }
  * Resposta: { ok:true, data } ou { ok:false, error:{ code, message, data? } }
  *
- * Arquivos: Code.gs (API/CRUD)  Setup.gs (criação das abas)  Parsers.gs (notificações e contracheque)
+ * Arquivo único: API/CRUD, acessos, parsers (notificações/contracheque) e setup.
  */
 
 const APP = { name: 'Nossa Finança', version: '1.0.0', folderName: 'Nossa Finança - Comprovantes' };
@@ -18,7 +19,8 @@ const ALLOWED_SETTINGS = ['budgetSplit', 'monitoredApps', 'incomeBase'];
 
 /** Esquema de cada aba (a primeira coluna é sempre o id). */
 const SCHEMA = {
-  Users: ['id', 'name', 'email', 'tokenHash', 'role', 'createdAt'],
+  Acessos: ['id', 'usuario', 'nome', 'email', 'perfil', 'status', 'senhaHash', 'sal', 'criadoEm', 'ultimoAcesso'],
+  Sessoes: ['id', 'userId', 'criadaEm', 'expiraEm', 'aparelho'],
   Accounts: ['id', 'name', 'kind', 'ownerId', 'institution', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Cards: ['id', 'name', 'kind', 'ownerId', 'limit', 'closingDay', 'dueDay', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Categories: ['id', 'name', 'type', 'icon', 'color', 'tag', 'bucket', 'keywords', 'createdAt', 'updatedAt', 'archived'],
@@ -92,7 +94,8 @@ const ACTIONS = {
   'tx.create': [txCreate_, true],
   'tx.update': [txUpdate_, true],
   'tx.remove': [txRemove_, true],
-  'user.list': [function () { return readAll_('Users').map(publicUser_); }, false],
+  'user.list': [function () { return readAll_('Acessos').map(publicUser_); }, false],
+  'auth.logout': [logout_, false],
   'user.update': [userUpdate_, true],
   'settings.get': [function () { return settings_(); }, false],
   'settings.save': [settingsSave_, true],
@@ -124,10 +127,12 @@ function doPost(e) {
   let out;
   try {
     const req = parseBody_(e);
-    const entry = ACTIONS[String(req.action || '')];
+    const entry = req.action === 'auth.login' ? [] : ACTIONS[String(req.action || '')];
     if (!entry) throw fail_('UNKNOWN_ACTION', 'Ação desconhecida.');
-    const user = auth_(req.token);
     const payload = req.payload && typeof req.payload === 'object' ? req.payload : {};
+    if (req.action === 'auth.login') return json_({ ok: true, data: login_(payload) });
+    const user = auth_(req.token);
+    payload.__token = req.token;
     const data = entry[1] ? withLock_(function () { return entry[0](payload, user); }) : entry[0](payload, user);
     out = { ok: true, data: data };
   } catch (err) {
@@ -155,14 +160,66 @@ function fail_(code, message, data) {
 
 // ---------------------------------------------------------------- autenticação
 
+const SESSION_DAYS = 30;
+const PW_ROUNDS = 3000;
+const MAX_FAILS = 8;           // tentativas erradas por usuário a cada 15 min
+
 function auth_(token) {
-  if (!token || typeof token !== 'string') throw fail_('UNAUTHORIZED', 'Informe o token de acesso.');
-  const h = hash_(token);
-  const u = readAll_('Users').filter(function (x) { return x.tokenHash === h; })[0];
-  if (!u) throw fail_('UNAUTHORIZED', 'Token inválido.');
+  if (!token || typeof token !== 'string') throw fail_('UNAUTHORIZED', 'Entre com seu usuário e senha.');
+  const row = findRow_('Sessoes', hash_(token));
+  const ses = row ? getById_('Sessoes', hash_(token)) : null;
+  if (!ses || new Date(ses.expiraEm).getTime() < Date.now()) throw fail_('UNAUTHORIZED', 'Sessão expirada. Entre novamente.');
+  const u = getById_('Acessos', ses.userId);
+  if (!u || u.status !== 'ativo') throw fail_('UNAUTHORIZED', 'Acesso desativado. Fale com quem administra a planilha.');
   return u;
 }
-function publicUser_(u) { return { id: u.id, name: u.name, email: u.email, role: u.role }; }
+function publicUser_(u) { return { id: u.id, name: u.nome, username: u.usuario, email: u.email, role: u.perfil, active: u.status === 'ativo' }; }
+
+/** Login: valida usuário e senha e cria uma sessão. A senha nunca é gravada nem registrada em log. */
+function login_(p) {
+  const usuario = String(p.username || '').trim().toLowerCase();
+  const senha = String(p.password || '');
+  if (!usuario || !senha) throw fail_('VALIDATION', 'Informe usuário e senha.');
+  const cache = CacheService.getScriptCache(), key = 'fails:' + usuario;
+  if (Number(cache.get(key) || 0) >= MAX_FAILS) throw fail_('LOCKED', 'Muitas tentativas. Aguarde 15 minutos e tente de novo.');
+  const u = readAll_('Acessos').filter(function (x) { return x.usuario === usuario; })[0];
+  const good = u && u.status === 'ativo' && u.senhaHash && pwHash_(senha, u.sal) === u.senhaHash;
+  if (!good) {
+    cache.put(key, String(Number(cache.get(key) || 0) + 1), 900);
+    throw fail_('BAD_LOGIN', u && u.status === 'inativo' ? 'Acesso desativado. Fale com quem administra a planilha.' : 'Usuário ou senha inválidos.');
+  }
+  cache.remove(key);
+  return withLock_(function () {
+    purgeSessions_();
+    const token = newToken_(), now = new Date();
+    insert_('Sessoes', { id: hash_(token), userId: u.id, criadaEm: now.toISOString(), expiraEm: new Date(now.getTime() + SESSION_DAYS * 864e5).toISOString(), aparelho: String(p.device || '').slice(0, 80) });
+    const row = findRow_('Acessos', u.id); u.ultimoAcesso = now.toISOString(); writeRow_('Acessos', row, u);
+    audit_(u, 'login', 'Acessos', u.id);
+    return { token: token, user: publicUser_(u) };
+  });
+}
+function logout_(p, user) {
+  const row = p.__token ? findRow_('Sessoes', hash_(p.__token)) : 0;
+  if (row) sheet_('Sessoes').deleteRow(row);
+  return { ok: true };
+}
+function revokeSessions_(userId) {
+  const sh = sheet_('Sessoes');
+  for (let r = sh.getLastRow(); r >= 2; r--) if (String(sh.getRange(r, 2).getValues()[0][0]) === String(userId)) sh.deleteRow(r);
+}
+function purgeSessions_() {
+  const sh = sheet_('Sessoes'), now = Date.now();
+  for (let r = sh.getLastRow(); r >= 2; r--) {
+    const v = sh.getRange(r, 4).getValues()[0][0];
+    if (!v || new Date(v).getTime() < now) sh.deleteRow(r);
+  }
+}
+/** Senha com sal e 3000 rodadas de SHA-256 (o Apps Script não tem bcrypt). */
+function pwHash_(senha, sal) {
+  let h = hash_(sal + ':' + senha);
+  for (let i = 0; i < PW_ROUNDS; i++) h = hash_(h + sal + senha);
+  return h;
+}
 function hash_(s) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8)
     .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
@@ -279,7 +336,7 @@ function activeOrFail_(sheet, id, label) {
 }
 function ownerOrFail_(id, allowFamily) {
   if (allowFamily && id === 'family') return;
-  if (!getById_('Users', id)) throw fail_('VALIDATION', 'Responsável não encontrado.');
+  if (!getById_('Acessos', id)) throw fail_('VALIDATION', 'Responsável não encontrado.');
 }
 
 function crossCheck_(name, o) {
@@ -346,7 +403,7 @@ function bootstrap_(p, user) {
   const since = /^\d{4}-\d{2}-\d{2}$/.test(p.since || '') ? p.since : '';
   return {
     serverTime: iso_(), me: publicUser_(user), since: since,
-    users: readAll_('Users').map(publicUser_),
+    users: readAll_('Acessos').map(publicUser_),
     accounts: readAll_('Accounts'), cards: readAll_('Cards'), categories: readAll_('Categories'),
     fixedBills: readAll_('FixedBills'), goals: readAll_('Goals'), settings: settings_(),
     transactions: readAll_('Transactions').filter(function (t) { return !t.archived && (!since || t.date >= since); }),
@@ -360,7 +417,7 @@ function sync_(p) {
   return {
     serverTime: iso_(), accounts: changed('Accounts'), cards: changed('Cards'), categories: changed('Categories'),
     fixedBills: changed('FixedBills'), goals: changed('Goals'), transactions: changed('Transactions'),
-    users: readAll_('Users').map(publicUser_), settings: settings_(), inboxCounts: inboxCounts_()
+    users: readAll_('Acessos').map(publicUser_), settings: settings_(), inboxCounts: inboxCounts_()
   };
 }
 
@@ -491,10 +548,10 @@ function txList_(p) {
 function userUpdate_(p, user) {
   const name = String(p.name || '').trim();
   if (!name || name.length > 40) throw fail_('VALIDATION', 'Nome deve ter de 1 a 40 caracteres.');
-  const row = findRow_('Users', user.id);
-  const cur = getById_('Users', user.id);
-  cur.name = name; writeRow_('Users', row, cur);
-  audit_(user, 'update', 'Users', user.id);
+  const row = findRow_('Acessos', user.id);
+  const cur = getById_('Acessos', user.id);
+  cur.nome = name; writeRow_('Acessos', row, cur);
+  audit_(user, 'update', 'Acessos', user.id);
   return publicUser_(cur);
 }
 
@@ -547,7 +604,7 @@ function inboxAdd_(p, user) {
   const existing = readAll_('NotificationInbox').filter(function (n) { return n.fingerprint === fp; })[0];
   if (existing) return Object.assign({}, existing, { duplicate: true });
   const parsed = parseNotification_(raw, app, readAll_('Categories').filter(function (c) { return !c.archived; }));
-  const ownerId = p.ownerId && getById_('Users', p.ownerId) ? p.ownerId : user.id;
+  const ownerId = p.ownerId && getById_('Acessos', p.ownerId) ? p.ownerId : user.id;
   const rec = {
     id: uid_(), receivedAt: receivedAt, app: app, rawText: raw, amount: parsed.amount, merchant: parsed.merchant,
     institution: parsed.institution, type: parsed.type, ownerId: ownerId, suggestedCategoryId: parsed.categoryId,
@@ -670,7 +727,7 @@ function indicatorsGet_(p) {
 // PARSERS — notificações e contracheque
 // ============================================================
 /**
- * NOSSA FINANÇA — Parsers.gs
+ * NOSSA FINANÇA — Parsers
  * Funções puras de leitura de texto: notificações bancárias e contracheque.
  * São heurísticas: o app SEMPRE mostra o resultado para o usuário conferir antes de gravar.
  */
@@ -843,19 +900,12 @@ function parsePayslipText_(text) {
 // SETUP — rode setup() uma vez
 // ============================================================
 /**
- * NOSSA FINANÇA — Setup.gs
+ * NOSSA FINANÇA — Setup
  * Rode setup() UMA vez no editor do Apps Script. É idempotente: pode rodar de novo
  * sem apagar dados (só cria o que falta).
  *
- * Os tokens de acesso aparecem UMA vez em "Execução > Registros" (Logger).
- * Só o hash fica na planilha. Guarde cada token em um gerenciador de senhas.
+ * Depois do setup, crie os usuários em: planilha > menu "Finanças" > "Gerenciar usuários".
  */
-
-/** Nomes iniciais. Dá para trocar depois dentro do app (Configurações). */
-const FAMILY_MEMBERS = [
-  { name: 'Eu', email: '' },
-  { name: 'Esposa', email: '' }
-];
 
 /** Categorias padrão (são configuração, não dados financeiros). [nome, tipo, ícone, cor, tag, bucket, palavras-chave] */
 const DEFAULT_CATEGORIES = [
@@ -895,38 +945,115 @@ function setup() {
   });
   removeDefaultSheet_(ss);
   seedCategories_();
-  const created = setupFamily();
-  Logger.log('Setup concluído. Abas: ' + Object.keys(SCHEMA).join(', '));
-  return created;
+  formatAcessos_();
+  Logger.log('Setup concluído. Agora abra a planilha > menu Finanças > Gerenciar usuários e crie seu acesso.');
+  return Object.keys(SCHEMA);
 }
 
-/** Cria usuários que ainda não existem e registra o token de cada um (aparece só agora). */
-function setupFamily() {
-  const users = readAll_('Users');
-  const created = [];
-  FAMILY_MEMBERS.forEach(function (m) {
-    if (users.some(function (u) { return u.name === m.name; })) return;
-    const token = newToken_();
-    const u = { id: uid_(), name: m.name, email: m.email || '', tokenHash: hash_(token), role: 'member', createdAt: iso_() };
-    insert_('Users', u);
-    created.push({ name: m.name, token: token });
-    Logger.log('TOKEN de "' + m.name + '": ' + token + '   (guarde agora, não será exibido de novo)');
-  });
-  shareFolderWithFamily_();
-  return created;
+// ============================================================
+// ACESSOS — gestão de usuários (menu "Finanças" na planilha)
+// ============================================================
+// As senhas são digitadas numa janela com campo mascarado e vão direto para o servidor,
+// que guarda apenas hash com sal. Nenhuma tela, aba ou log mostra senha.
+
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi().createMenu('Finanças')
+      .addItem('Gerenciar usuários', 'openUserManager')
+      .addItem('Preparar planilha (setup)', 'setup')
+      .addToUi();
+  } catch (e) { /* fora de planilha */ }
 }
 
-/** Gera token novo para todos os membros (use se perder ou vazar um token). */
-function rotateTokens() {
-  const users = readAll_('Users');
-  users.forEach(function (u) {
-    const token = newToken_();
-    const row = findRow_('Users', u.id);
-    u.tokenHash = hash_(token);
-    writeRow_('Users', row, u);
-    Logger.log('NOVO TOKEN de "' + u.name + '": ' + token);
+function openUserManager() {
+  const html = HtmlService.createHtmlOutput(USER_MANAGER_HTML_).setWidth(640).setHeight(640);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Gerenciar usuários');
+}
+
+function validatePassword_(senha, confirma, usuario) {
+  if (String(senha).length < 8) throw fail_('VALIDATION', 'A senha precisa ter pelo menos 8 caracteres.');
+  if (senha !== confirma) throw fail_('VALIDATION', 'A confirmação da senha não confere.');
+  if (usuario && String(senha).toLowerCase() === usuario) throw fail_('VALIDATION', 'A senha não pode ser igual ao usuário.');
+}
+function activeAdmins_() { return readAll_('Acessos').filter(function (u) { return u.perfil === 'admin' && u.status === 'ativo'; }); }
+
+/** Lista para o painel (nunca devolve hash nem sal). */
+function umList() {
+  return readAll_('Acessos').map(function (u) {
+    return { id: u.id, usuario: u.usuario, nome: u.nome, email: u.email, perfil: u.perfil, status: u.status, ultimoAcesso: u.ultimoAcesso };
   });
 }
+function umCreate(f) {
+  return withLock_(function () {
+    const usuario = String(f.usuario || '').trim().toLowerCase(), nome = String(f.nome || '').trim();
+    if (!/^[a-z0-9._-]{3,30}$/.test(usuario)) throw fail_('VALIDATION', 'Usuário: 3 a 30 caracteres, só letras minúsculas, números, ponto, hífen ou _.');
+    if (!nome) throw fail_('VALIDATION', 'Informe o nome.');
+    if (readAll_('Acessos').some(function (u) { return u.usuario === usuario; })) throw fail_('DUPLICATE', 'Esse usuário já existe.');
+    validatePassword_(f.senha, f.confirma, usuario);
+    const perfil = f.perfil === 'admin' || !readAll_('Acessos').length ? 'admin' : 'membro';
+    const sal = newToken_();
+    insert_('Acessos', { id: uid_(), usuario: usuario, nome: nome, email: String(f.email || '').trim(), perfil: perfil, status: 'ativo', senhaHash: pwHash_(String(f.senha), sal), sal: sal, criadoEm: iso_(), ultimoAcesso: '' });
+    shareFolderWithEmail_(String(f.email || '').trim());
+    return umList();
+  });
+}
+function umReset(f) {
+  return withLock_(function () {
+    const u = getById_('Acessos', f.id); if (!u) throw fail_('NOT_FOUND', 'Usuário não encontrado.');
+    validatePassword_(f.senha, f.confirma, u.usuario);
+    u.sal = newToken_(); u.senhaHash = pwHash_(String(f.senha), u.sal);
+    writeRow_('Acessos', findRow_('Acessos', u.id), u);
+    revokeSessions_(u.id);          // quem estava logado precisa entrar de novo
+    CacheService.getScriptCache().remove('fails:' + u.usuario);   // redefinir também libera o bloqueio
+    return umList();
+  });
+}
+function umSet(f) {
+  return withLock_(function () {
+    const u = getById_('Acessos', f.id); if (!u) throw fail_('NOT_FOUND', 'Usuário não encontrado.');
+    if (f.status) { if (['ativo', 'inativo'].indexOf(f.status) < 0) throw fail_('VALIDATION', 'Status inválido.'); u.status = f.status; }
+    if (f.perfil) { if (['admin', 'membro'].indexOf(f.perfil) < 0) throw fail_('VALIDATION', 'Perfil inválido.'); u.perfil = f.perfil; }
+    const rest = activeAdmins_().filter(function (a) { return a.id !== u.id; });
+    if (!rest.length && !(u.perfil === 'admin' && u.status === 'ativo')) throw fail_('VALIDATION', 'Mantenha pelo menos um administrador ativo.');
+    writeRow_('Acessos', findRow_('Acessos', u.id), u);
+    if (u.status === 'inativo') revokeSessions_(u.id);
+    return umList();
+  });
+}
+
+/** Esconde hash e sal, trava o formato e coloca listas suspensas. Falhas aqui não impedem o resto. */
+function formatAcessos_() {
+  try {
+    const sh = sheet_('Acessos');
+    sh.hideColumns(7, 2);
+    sh.getRange(2, 5, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['admin', 'membro'], true).build());
+    sh.getRange(2, 6, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['ativo', 'inativo'], true).build());
+    sheet_('Sessoes').hideSheet();
+  } catch (e) { /* ambiente sem esses recursos */ }
+}
+
+const USER_MANAGER_HTML_ = '<!doctype html><html><head><base target="_top"><meta charset="utf-8"><style>' +
+  'body{font:14px system-ui,sans-serif;margin:16px;color:#15324a}h3{margin:18px 0 8px}table{width:100%;border-collapse:collapse}' +
+  'td,th{padding:6px 4px;border-bottom:1px solid #d9e6ef;text-align:left;font-size:13px}.b{padding:4px 10px;border:0;border-radius:12px;background:#dcf0fb;cursor:pointer;margin:1px}' +
+  'input,select{width:100%;padding:7px;border:1px solid #b9cddb;border-radius:8px;box-sizing:border-box}.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}' +
+  '.p{background:#2d9cdb;color:#fff;padding:9px 16px;border:0;border-radius:14px;margin-top:10px;cursor:pointer}#m{margin:8px 0;font-weight:600}.e{color:#c0392b}.o{color:#16875f}small{color:#67829a}' +
+  '</style></head><body><div id="m"></div><table><thead><tr><th>Usuário</th><th>Nome</th><th>Perfil</th><th>Status</th><th></th></tr></thead><tbody id="t"></tbody></table>' +
+  '<h3 id="ft">Novo usuário</h3><div class="g"><input id="u" placeholder="usuário (login)" autocomplete="off"><input id="n" placeholder="nome"><input id="em" placeholder="e-mail (opcional, p/ pasta de comprovantes)">' +
+  '<select id="pf"><option value="membro">Membro</option><option value="admin">Administrador</option></select>' +
+  '<input id="s" type="password" placeholder="senha (mín. 8)" autocomplete="new-password"><input id="c" type="password" placeholder="confirmar senha" autocomplete="new-password"></div>' +
+  '<button class="p" id="go">Criar usuário</button> <button class="b" id="cx" style="display:none">Cancelar</button><br><small>As senhas não ficam salvas em lugar nenhum: só um código irreversível (hash).</small>' +
+  '<script>var R=null;function $(i){return document.getElementById(i)}function msg(t,ok){var m=$("m");m.textContent=t;m.className=ok?"o":"e"}' +
+  'function run(fn,args,done){google.script.run.withSuccessHandler(function(l){render(l);if(done)done()}).withFailureHandler(function(e){msg(e.message||String(e))})[fn].apply(null,args)}' +
+  'function render(l){var t=$("t");t.innerHTML="";l.forEach(function(u){var r=t.insertRow();[u.usuario,u.nome,u.perfil,u.status].forEach(function(v){r.insertCell().textContent=v});var c=r.insertCell();' +
+  'function B(x,f){var b=document.createElement("button");b.className="b";b.textContent=x;b.onclick=f;c.appendChild(b)}' +
+  'B("Redefinir senha",function(){R=u;$("ft").textContent="Redefinir senha de "+u.usuario;$("go").textContent="Salvar nova senha";$("cx").style.display="";["u","n","em","pf"].forEach(function(i){$(i).disabled=true});$("s").focus()});' +
+  'B(u.status=="ativo"?"Desativar":"Ativar",function(){run("umSet",[{id:u.id,status:u.status=="ativo"?"inativo":"ativo"}],function(){msg("Atualizado.",1)})});' +
+  'B(u.perfil=="admin"?"Tornar membro":"Tornar admin",function(){run("umSet",[{id:u.id,perfil:u.perfil=="admin"?"membro":"admin"}],function(){msg("Atualizado.",1)})})})}' +
+  'function reset(){R=null;$("ft").textContent="Novo usuário";$("go").textContent="Criar usuário";$("cx").style.display="none";["u","n","em","pf"].forEach(function(i){$(i).disabled=false});["u","n","em","s","c"].forEach(function(i){$(i).value=""})}' +
+  '$("cx").onclick=reset;$("go").onclick=function(){var s=$("s").value,c=$("c").value;' +
+  'if(R){run("umReset",[{id:R.id,senha:s,confirma:c}],function(){msg("Senha alterada. Esse usuário precisa entrar de novo.",1);reset()})}' +
+  'else{run("umCreate",[{usuario:$("u").value,nome:$("n").value,email:$("em").value,perfil:$("pf").value,senha:s,confirma:c}],function(){msg("Usuário criado.",1);reset()})}};' +
+  'google.script.run.withSuccessHandler(render).withFailureHandler(function(e){msg(e.message)}).umList();</script></body></html>';
 
 function seedCategories_() {
   if (readAll_('Categories').length) return;
@@ -946,9 +1073,7 @@ function removeDefaultSheet_(ss) {
   });
 }
 
-function shareFolderWithFamily_() {
-  const emails = FAMILY_MEMBERS.map(function (m) { return m.email; }).filter(Boolean);
-  if (!emails.length) return;
-  const folder = folder_();
-  emails.forEach(function (e) { try { folder.addEditor(e); } catch (err) { Logger.log('Não foi possível compartilhar a pasta com ' + e); } });
+function shareFolderWithEmail_(email) {
+  if (!email) return;
+  try { folder_().addEditor(email); } catch (err) { Logger.log('Não foi possível compartilhar a pasta com ' + email); }
 }

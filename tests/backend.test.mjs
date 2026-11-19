@@ -35,6 +35,7 @@ const folder = { createFile(blob) { const id = 'f' + Object.keys(files).length; 
 const ctx = vm.createContext({
   console, Logger: { log: (s) => logs.push(s) },
   Session: { getScriptTimeZone: () => 'America/Sao_Paulo' },
+  CacheService: { getScriptCache: ((m) => () => {  return { get: (k) => m[k] ?? null, put: (k, v) => { m[k] = v; }, remove: (k) => { delete m[k]; } }; })({}) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ s, setMimeType() { return this; } }) },
@@ -56,15 +57,48 @@ let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log('  ok -', name); };
 
 // ---- setup
-const created = ctx.setup();
-const [meTok, wifeTok] = created.map((c) => c.token);
-ok('setup cria 11 abas, categorias padrão e 2 tokens', () => {
-  assert.equal(Object.keys(sheets).length, 11);
-  assert.equal(created.length, 2);
+ctx.setup();
+ctx.umCreate({ usuario: 'marido', nome: 'Eu', perfil: 'admin', senha: 'senha-forte-1', confirma: 'senha-forte-1' });
+ctx.umCreate({ usuario: 'esposa', nome: 'Esposa', perfil: 'membro', senha: 'outra-senha-2', confirma: 'outra-senha-2' });
+const login = (username, password) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'auth.login', payload: { username, password } }) } }).s);
+const meTok = login('marido', 'senha-forte-1').data.token;
+let wifeTok = login('esposa', 'outra-senha-2').data.token;
+ok('setup cria 12 abas e categorias padrão; senha nunca fica em texto puro', () => {
+  assert.equal(Object.keys(sheets).length, 12);
   assert.equal(sheets.Categories.rows.length, 1 + 15);
-  assert.ok(!JSON.stringify(sheets.Users.rows).includes(meTok), 'token em texto puro não pode ficar na planilha');
+  const dump = JSON.stringify(sheets.Acessos.rows) + JSON.stringify(sheets.Sessoes.rows);
+  assert.ok(!dump.includes('senha-forte-1') && !dump.includes('outra-senha-2'), 'senha em texto puro');
+  assert.ok(!dump.includes(meTok), 'token de sessão em texto puro');
 });
-ok('setup é idempotente', () => { assert.equal(ctx.setup().length, 0); assert.equal(sheets.Categories.rows.length, 16); });
+ok('setup é idempotente', () => { ctx.setup(); assert.equal(sheets.Categories.rows.length, 16); assert.equal(sheets.Acessos.rows.length, 3); });
+ok('login: erro genérico, bloqueio por tentativas, validações', () => {
+  assert.equal(login('marido', 'errada').error.code, 'BAD_LOGIN');
+  assert.equal(login('naoexiste', 'x').error.code, 'BAD_LOGIN');
+  for (let i = 0; i < 8; i++) login('esposa', 'errada');
+  assert.equal(login('esposa', 'outra-senha-2').error.code, 'LOCKED');
+});
+ok('gestão: duplicado, senha curta, último admin, desativar derruba sessão, redefinir', () => {
+  assert.throws(() => ctx.umCreate({ usuario: 'marido', nome: 'X', senha: '12345678', confirma: '12345678' }), /já existe/);
+  assert.throws(() => ctx.umCreate({ usuario: 'novo', nome: 'X', senha: '123', confirma: '123' }), /8 caracteres/);
+  assert.throws(() => ctx.umCreate({ usuario: 'novo', nome: 'X', senha: '12345678', confirma: '1234567x' }), /não confere/);
+  const eu = ctx.umList().find((u) => u.usuario === 'marido');
+  assert.ok(!('senhaHash' in eu) && !('sal' in eu));
+  assert.throws(() => ctx.umSet({ id: eu.id, status: 'inativo' }), /pelo menos um administrador/);
+  const esp = ctx.umList().find((u) => u.usuario === 'esposa');
+  ctx.umSet({ id: esp.id, status: 'inativo' });
+  assert.equal(call('bootstrap', {}, wifeTok).error.code, 'UNAUTHORIZED');
+  ctx.umSet({ id: esp.id, status: 'ativo' });
+  ctx.umReset({ id: esp.id, senha: 'nova-senha-99', confirma: 'nova-senha-99' });
+  assert.equal(call('bootstrap', {}, wifeTok).error.code, 'UNAUTHORIZED');
+  wifeTok = login('esposa', 'nova-senha-99').data.token;
+  assert.equal(call('auth.me', {}, wifeTok).ok, true);
+});
+ok('logout encerra a sessão', () => {
+  const t = login('marido', 'senha-forte-1').data.token;
+  assert.equal(call('auth.me', {}, t).ok, true);
+  call('auth.logout', {}, t);
+  assert.equal(call('auth.me', {}, t).error.code, 'UNAUTHORIZED');
+});
 ok('token inválido é recusado', () => { const r = call('bootstrap', {}, 'x'); assert.equal(r.error.code, 'UNAUTHORIZED'); });
 
 const boot = call('bootstrap', {}, meTok).data;

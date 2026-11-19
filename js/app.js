@@ -19,15 +19,15 @@ function showConnect(message = '') {
 }
 $('#connect-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const url = $('#c-url').value.trim(), token = $('#c-token').value.trim();
+  const url = $('#c-url').value.trim(), username = $('#c-user').value.trim(), password = $('#c-pass').value;
   const err = $('#connect-error'); err.hidden = true;
   if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { err.textContent = 'A URL deve começar com https://script.google.com/ e terminar em /exec.'; err.hidden = false; return; }
-  if (!token) { err.textContent = 'Informe o token.'; err.hidden = false; return; }
+  if (!username || !password) { err.textContent = 'Informe usuário e senha.'; err.hidden = false; return; }
   const btn = $('#connect-form button[type=submit]'); btn.disabled = true;
   try {
-    await api.call('auth.me', {}, { conn: { url, token } });
-    api.setConn({ url, token });
-    $('#c-token').value = '';
+    const r = await api.call('auth.login', { username, password, device: (navigator.userAgent || '').slice(0, 60) }, { conn: { url, token: '' }, anon: true });
+    api.setConn({ url, token: r.token });
+    $('#c-pass').value = '';
     await boot();
   } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   finally { btn.disabled = false; }

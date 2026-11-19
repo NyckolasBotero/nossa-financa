@@ -37,9 +37,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *   retries: repete só em falha de rede (use em leituras e em criações com clientId).
  *   timeout: ms; o OCR do contracheque pede mais que o padrão.
  */
-export async function call(action, payload = {}, { retries = 0, silent = false, conn, timeout = CONFIG.REQUEST_TIMEOUT_MS } = {}) {
+export async function call(action, payload = {}, { retries = 0, silent = false, conn, timeout = CONFIG.REQUEST_TIMEOUT_MS, anon = false } = {}) {
   const { url, token } = conn || getConn();
-  if (!url || !token) throw new ApiError('NOT_CONFIGURED', 'Conecte o app ao seu Apps Script em Configurações.');
+  if (!url || (!token && !anon)) throw new ApiError('NOT_CONFIGURED', 'Entre no app com seu usuário e senha.');
   if (!silent) bump(1);
   try {
     for (let attempt = 0; ; attempt++) {
