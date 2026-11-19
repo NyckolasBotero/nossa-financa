@@ -15,6 +15,7 @@ function showConnect(message = '') {
   show($('#app'), false); show($('#connect'), true);
   const c = api.getConn();
   $('#c-url').value = c.url;
+  $('#c-url').closest('.field').hidden = !!CONFIG.API_URL;   // URL já vem do config.js
   const err = $('#connect-error'); err.textContent = message; err.hidden = !message;
 }
 $('#connect-form').addEventListener('submit', async (e) => {
