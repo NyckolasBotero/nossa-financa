@@ -328,6 +328,17 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.equal(P.dailyCumulative({ ...dd, transactions: [tx('9', '2026-11-02', 500, 'income', 'cs'), tx('8', '2026-11-04', 600, 'expense', 'cv')] }, '2026-11', '2026-11-10').crossingDay, 4);
     assert.equal(P.dailyCumulative({ ...dd, transactions: [tx('7', '2026-11-03', 100, 'expense', 'cv'), tx('6', '2026-11-05', 1000, 'income', 'cs')] }, '2026-11', '2026-11-10').crossingDay, null);
   });
+  ok('conta variável: média enquanto não paga, valor real depois, e previsões usam isso', () => {
+    const b = { id: 'lz', kind: 'expense', billType: 'variable', name: 'Luz', amount: 100, dueDay: 10, startMonth: '2026-06' };
+    const tx = (id, date, amount, ref) => ({ id, date, amount, type: 'expense', fixedBillId: 'lz', refMonth: ref, ownerId: 'u', accountId: 'a' });
+    const dd = { transactions: [tx('a', '2026-08-10', 200, '2026-08'), tx('b', '2026-09-10', 300, '2026-09')], fixedBills: [b], categories: [], cards: [], accounts: [], goals: [], settings: {} };
+    const today = '2026-10-02';
+    assert.equal(P.billsForMonth(dd, '2026-10', today)[0].bill.amount, 250);                 // média de 200 e 300
+    assert.equal(P.monthForecast(dd, today, 1).fixed, 250);                                   // previsão de novembro usa a média, não os 100 cadastrados
+    const paid = { ...dd, transactions: [...dd.transactions, tx('c', '2026-10-09', 420, '2026-10')] };
+    assert.equal(P.billsForMonth(paid, '2026-10', today)[0].bill.amount, 420);               // paga: vale o real
+    assert.equal(P.outlook(paid, today, 1)[0].fixed, 420);                                    // mês atual no resumo usa o real
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

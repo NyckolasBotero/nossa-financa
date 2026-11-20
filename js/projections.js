@@ -158,7 +158,7 @@ export function billsForMonth(d, month, today, kind = 'expense') {
     .map((b) => {
       const st = billStatus(d, b, month, today);
       if (!isVariable(b)) return { bill: st.tx && st.tx.amount !== b.amount ? { ...b, amount: st.tx.amount, base: b } : b, ...st };   // já paga/recebida: vale o valor que de fato entrou/saiu naquele mês
-      const { avg, count } = billAverage(d, b, month);
+      const { avg, count } = billAverage(d, b, month > addMonths(ym(today), 1) ? addMonths(ym(today), 1) : month);   // meses futuros: média do que já aconteceu
       return { bill: { ...b, amount: st.tx ? st.tx.amount : avg ?? b.amount }, base: b, avg, avgCount: count, ...st };
     }).sort((a, b) => a.due.localeCompare(b.due));
 }
@@ -286,9 +286,9 @@ export function nextMonth(d, today, txs = d.transactions) { return monthForecast
 /** Previsão de um mês futuro (n >= 1) com a mesma regra. */
 export function monthForecast(d, today, n, txs = d.transactions) {
   const month = addMonths(ym(today), n), v = variableStats(d, txs, today), inc = expectedIncome(d, today, txs);
-  const fixedInc = sum(d.fixedBills.filter((b) => billKind(b) === 'income' && billApplies(b, month)), (b) => b.amount);
+  const fixedInc = sum(billsForMonth(d, month, today, 'income'), (x) => x.bill.amount);
   const income = round2(inc.recurringExpected + fixedInc);
-  const fixed = sum(d.fixedBills.filter((b) => billKind(b) === 'expense' && billApplies(b, month)), (b) => b.amount);
+  const fixed = round2(sum(billsForMonth(d, month, today, 'expense'), (x) => x.bill.amount));   // variáveis: média; já pagas: valor real
   const variable = round2(v.daily * daysInMonth(month));
   return { month, income, fixed, variable, expense: round2(fixed + variable), leftover: round2(income - fixed - variable),
     lowConfidence: v.lowConfidence, hasIncomeHistory: inc.has || fixedInc > 0 };
@@ -296,7 +296,7 @@ export function monthForecast(d, today, n, txs = d.transactions) {
 
 /** Visão dos próximos meses: o mês atual (já com o que falta acontecer) e os seguintes. */
 export function outlook(d, today, months = 6, txs = d.transactions) {
-  const cur = monthResult(d, today, txs), curFixed = sum(d.fixedBills.filter((b) => billKind(b) === 'expense' && billApplies(b, ym(today))), (b) => b.amount);
+  const cur = monthResult(d, today, txs), curFixed = round2(sum(billsForMonth(d, ym(today), today, 'expense'), (x) => x.bill.amount));
   const rows = [{ month: ym(today), income: cur.income, fixed: curFixed, expense: round2(cur.spent + cur.remainingVariable + cur.pendingFixed), leftover: cur.result, lowConfidence: cur.lowConfidence, current: true }];
   for (let i = 1; i <= months; i++) rows.push({ ...monthForecast(d, today, i, txs), current: false });
   let acc = 0; for (const r of rows) { acc = round2(acc + r.leftover); r.cumulative = acc; }

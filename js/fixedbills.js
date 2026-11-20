@@ -32,7 +32,7 @@ export function openBillModal(bill = null, kindArg = 'expense') {
           fillIf('amount', b.amount, !v.amount); fillIf('dueDay', b.dueDay, !v.dueDay); if (kind === 'expense' && b.billType) c.set('billType', b.billType); } },
       { name: 'repeat', label: 'Essa conta', type: 'segmented', full: true, options: [{ value: 'monthly', label: 'Repete todo mês' }, { value: 'once', label: 'Só uma vez (avulsa)' }] },
       ...(kind === 'expense' ? [{ name: 'billType', label: 'Essa conta é', type: 'segmented', full: true, options: [{ value: 'fixed', label: 'Fixa (sempre igual)' }, { value: 'variable', label: 'Variável (muda todo mês)' }] }] : []),
-      { name: 'amount', label: kind === 'expense' ? 'Valor (estimado, se variável)' : 'Valor', type: 'money', required: true },
+      { name: 'amount', label: kind === 'expense' ? 'Valor (estimado, se variável — vale a média dos meses quando houver histórico)' : 'Valor', type: 'money', required: true },
       { name: 'dueDay', label: t.day, type: 'number', min: 1, max: 31, required: true },
       ...(kind === 'expense' ? [{ name: 'dueOffset', label: 'Vencimento', type: 'check', checkLabel: 'Vence no mês seguinte ao consumo (ex.: luz de outubro vence em novembro)', full: true }] : []),
       { name: 'categoryId', label: t.cat, type: 'select', options: store.categoryOptions(kind, { withNew: true }), placeholder: 'Sem categoria' },
