@@ -287,6 +287,15 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.equal(P.billApplies(b, '2026-11'), false);
     assert.equal(P.monthTotals(dd, '2026-11', dd.transactions).expense, 210);
   });
+  ok('vence no mês seguinte: luz de outubro vence em novembro e não conta atraso se paga a tempo', () => {
+    const b = { id: 'lz2', name: 'Luz', kind: 'expense', amount: 200, dueDay: 10, dueOffset: 1, startMonth: '2026-10', endMonth: '2026-10', archived: false };
+    const dd = { ...d, fixedBills: [b], transactions: [] };
+    assert.equal(P.billStatus(dd, b, '2026-10', '2026-11-05').due, '2026-11-10');
+    assert.equal(P.billStatus(dd, b, '2026-10', '2026-11-05').status, 'pending');
+    assert.equal(P.billStatus(dd, b, '2026-10', '2026-11-12').status, 'late');
+    const paid = { id: 'q', type: 'expense', amount: 200, date: '2026-11-01', refMonth: '2026-10', fixedBillId: 'lz2', ownerId: 'u', accountId: 'a', createdAt: '2026-11-01' };
+    assert.equal(P.billStatus({ ...dd, transactions: [paid] }, b, '2026-10', '2026-11-12').lateDays, 0);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

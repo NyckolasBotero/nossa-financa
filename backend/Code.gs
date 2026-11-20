@@ -24,7 +24,7 @@ const SCHEMA = {
   Accounts: ['id', 'name', 'kind', 'ownerId', 'institution', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Cards: ['id', 'name', 'kind', 'ownerId', 'limit', 'closingDay', 'dueDay', 'initialBalance', 'createdAt', 'updatedAt', 'archived'],
   Categories: ['id', 'name', 'type', 'icon', 'color', 'tag', 'bucket', 'keywords', 'createdAt', 'updatedAt', 'archived'],
-  FixedBills: ['id', 'name', 'amount', 'dueDay', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'startMonth', 'endMonth', 'createdAt', 'updatedAt', 'archived', 'kind', 'method', 'billType'],
+  FixedBills: ['id', 'name', 'amount', 'dueDay', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'startMonth', 'endMonth', 'createdAt', 'updatedAt', 'archived', 'kind', 'method', 'billType', 'dueOffset'],
   Goals: ['id', 'name', 'target', 'deadline', 'ownerId', 'scope', 'createdAt', 'updatedAt', 'archived', 'kind'],
   Transactions: ['id', 'clientId', 'date', 'type', 'amount', 'description', 'merchant', 'categoryId', 'accountId', 'cardId', 'ownerId', 'scope', 'origin', 'fixedBillId', 'goalId', 'refMonth', 'notes', 'fingerprint', 'createdBy', 'createdAt', 'updatedAt', 'archived', 'method'],
   Payslips: ['id', 'ownerId', 'payDate', 'refMonth', 'net', 'gross', 'discounts', 'items', 'notes', 'accountId', 'transactionId', 'createdAt', 'updatedAt', 'archived'],
@@ -34,7 +34,7 @@ const SCHEMA = {
   Attachments: ['id', 'transactionId', 'fileId', 'name', 'url', 'mime', 'size', 'createdAt', 'createdBy'],
   AuditLog: ['ts', 'userId', 'action', 'entity', 'entityId', 'detail']
 };
-const NUM_COLS = ['amount', 'initialBalance', 'limit', 'closingDay', 'dueDay', 'target', 'size', 'net', 'gross', 'discounts', 'packs', 'perPack', 'units', 'perPersonDay'];
+const NUM_COLS = ['amount', 'initialBalance', 'limit', 'closingDay', 'dueDay', 'target', 'size', 'net', 'gross', 'discounts', 'packs', 'perPack', 'units', 'perPersonDay', 'dueOffset'];
 const BOOL_COLS = ['archived'];
 const DATE_COLS = ['date', 'startMonth', 'endMonth', 'deadline', 'refMonth', 'payDate', 'expiry'];
 const PROTECTED = ['id', 'createdAt', 'updatedAt', 'createdBy', 'archived', 'fingerprint'];
@@ -74,7 +74,7 @@ const RULES = {
     dueDay: { t: 'int', req: 1, min: 1, max: 31, l: 'Dia de vencimento' }, categoryId: { t: 'str' }, accountId: { t: 'str' },
     cardId: { t: 'str' }, ownerId: { t: 'str', req: 1, l: 'Responsável' }, scope: { t: 'enum', v: ENUMS.scope },
     startMonth: { t: 'month', l: 'Mês inicial' }, endMonth: { t: 'month', l: 'Mês final' }, kind: { t: 'enum', v: ENUMS.billKind, l: 'Tipo' }, method: { t: 'str', max: 30 },
-    billType: { t: 'enum', v: ENUMS.billType, l: 'Fixa ou variável' }
+    billType: { t: 'enum', v: ENUMS.billType, l: 'Fixa ou variável' }, dueOffset: { t: 'int', min: 0, max: 1, l: 'Vence no mês seguinte' }
   },
   Goals: {
     name: { t: 'str', req: 1, max: 60, l: 'Nome' }, target: { t: 'num', req: 1, min: 0.01, l: 'Valor da meta' },

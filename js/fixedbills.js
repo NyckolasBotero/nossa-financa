@@ -22,7 +22,7 @@ export function openBillModal(bill = null, kindArg = 'expense') {
   const sources = store.sourceOptions({ type: kind });
   return formModal({
     title: editing ? t.edit : t.new, submitLabel: editing ? 'Salvar' : t.create,
-    values: bill ? { ...bill, billType: bill.billType || 'fixed', repeat: bill.startMonth && bill.startMonth === bill.endMonth ? 'once' : 'monthly', refOnce: bill.startMonth || store.prefs.month, source: bill.accountId ? `a:${bill.accountId}` : bill.cardId ? `c:${bill.cardId}` : '' }
+    values: bill ? { ...bill, dueOffset: Number(bill.dueOffset) === 1, billType: bill.billType || 'fixed', repeat: bill.startMonth && bill.startMonth === bill.endMonth ? 'once' : 'monthly', refOnce: bill.startMonth || store.prefs.month, source: bill.accountId ? `a:${bill.accountId}` : bill.cardId ? `c:${bill.cardId}` : '' }
       : { ownerId: store.prefs.who !== 'family' ? store.prefs.who : store.state.me.id, scope: kind === 'income' ? 'individual' : 'shared', billType: 'fixed', repeat: 'monthly', startMonth: store.prefs.month, refOnce: store.prefs.month },
     fields: [
       { name: 'name', label: 'Nome', required: true, full: true, placeholder: t.ph, suggest: () => [...new Map(store.state.fixedBills.filter((x) => P.billKind(x) === kind).sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0)).map((x) => [P.norm(x.name), { label: x.name, bill: x }])).values()],
@@ -33,6 +33,7 @@ export function openBillModal(bill = null, kindArg = 'expense') {
       ...(kind === 'expense' ? [{ name: 'billType', label: 'Essa conta é', type: 'segmented', full: true, options: [{ value: 'fixed', label: 'Fixa (sempre igual)' }, { value: 'variable', label: 'Variável (muda todo mês)' }] }] : []),
       { name: 'amount', label: kind === 'expense' ? 'Valor (estimado, se variável)' : 'Valor', type: 'money', required: true },
       { name: 'dueDay', label: t.day, type: 'number', min: 1, max: 31, required: true },
+      ...(kind === 'expense' ? [{ name: 'dueOffset', label: 'Vencimento', type: 'check', checkLabel: 'Vence no mês seguinte ao consumo (ex.: luz de outubro vence em novembro)', full: true }] : []),
       { name: 'categoryId', label: t.cat, type: 'select', options: store.categoryOptions(kind, { withNew: true }), placeholder: 'Sem categoria' },
       { name: 'source', label: t.src, type: 'select', options: sources, placeholder: kind === 'income' ? 'Escolho na hora de receber' : 'Escolho na hora de pagar' },
       { name: 'method', label: t.method, type: 'select', options: store.methodOptions(), placeholder: 'Não informar' },
@@ -56,7 +57,7 @@ export function openBillModal(bill = null, kindArg = 'expense') {
     },
     onSubmit: async (v, c) => {
       const [k, id] = (v.source || ':').split(':');
-      const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.repeat === 'once' ? v.refOnce || '' : v.startMonth || '', endMonth: v.repeat === 'once' ? v.refOnce || '' : v.endMonth || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
+      const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', dueOffset: kind === 'expense' && v.dueOffset ? 1 : 0, accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.repeat === 'once' ? v.refOnce || '' : v.startMonth || '', endMonth: v.repeat === 'once' ? v.refOnce || '' : v.endMonth || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
       const rec = editing ? await store.update('fixedBills', { id: bill.id, ...payload }) : await store.create('fixedBills', payload);
       toast(t.saved, { kind: 'ok' }); c.close();
       if (payload.billType === 'variable' && v.repeat !== 'once') await linkHistory(rec, { quiet: false });

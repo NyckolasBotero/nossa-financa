@@ -308,6 +308,8 @@ ok('receita fixa: tipo, categoria e vínculo coerentes; forma de pagamento salva
   assert.equal(call('fixedBill.create', { name: 'Errada', kind: 'income', amount: 1, dueDay: 5, categoryId: cat('Mercado'), ownerId: me.id }, meTok).error.code, 'VALIDATION', 'categoria de despesa em receita');
   assert.equal(call('fixedBill.create', { name: 'Crédito não recebe', kind: 'income', amount: 1, dueDay: 5, cardId: credit.id, ownerId: me.id }, meTok).error.code, 'VALIDATION');
   assert.equal(call('fixedBill.create', { name: 'Salário', kind: 'expense', amount: 10, dueDay: 5, ownerId: me.id }, meTok).ok, true, 'mesmo nome em tipos diferentes é permitido');
+  assert.equal(call('fixedBill.create', { name: 'Gás', amount: 90, dueDay: 8, dueOffset: 1, ownerId: me.id, startMonth: '2026-10' }, meTok).data.dueOffset, 1, 'vence no mês seguinte');
+  assert.equal(call('fixedBill.create', { name: 'Gás 2', amount: 90, dueDay: 8, dueOffset: 2, ownerId: me.id }, meTok).error.code, 'VALIDATION');
   // mesmo nome: avulsas (um mês só) e períodos que não se cruzam podem; duas recorrentes no mesmo período, não
   const luzA = call('fixedBill.create', { name: 'Luz', amount: 200, dueDay: 10, ownerId: me.id, startMonth: '2026-10' }, meTok);
   assert.equal(luzA.ok, true);

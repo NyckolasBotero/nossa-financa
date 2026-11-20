@@ -130,7 +130,7 @@ export const billKind = (b) => (b.kind === 'income' ? 'income' : 'expense');
 
 export function billStatus(d, b, month, today) {
   const paidTx = all(d).find((t) => matchesBill(t, b) && t.type === billKind(b) && compMonth(t) === month);
-  const due = dueDate(month, b.dueDay);
+  const due = dueDate(addMonths(month, Number(b.dueOffset) === 1 ? 1 : 0), b.dueDay);   // dueOffset 1: consumo de outubro vence em novembro
   if (paidTx) return { status: 'paid', due, tx: paidTx, lateDays: Math.max(0, diffDays(due, paidTx.date)) };
   const late = today > due;
   return { status: late ? 'late' : 'pending', due, tx: null, lateDays: late ? diffDays(due, today) : 0 };
