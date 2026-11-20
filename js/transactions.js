@@ -152,7 +152,7 @@ export function openTxModal(initial = {}, opts = {}) {
   const values = {
     type: t0, amount: initial.amount ?? null, date: initial.date || store.today(), description: initial.description || '', source: defSource,
     categoryId: initial.categoryId || '', ownerId: initial.ownerId || (store.prefs.who !== 'family' ? store.prefs.who : me), scope: initial.scope || 'individual',
-    fixedBillId: initial.fixedBillId || '', method: initial.method || '', notes: initial.notes || ''
+    fixedBillId: initial.fixedBillId || '', refMonth: initial.refMonth || '', method: initial.method || '', notes: initial.notes || ''
   };
   const fields = special ? [
     { name: 'amount', label: 'Valor', type: 'money', required: true },
@@ -172,6 +172,7 @@ export function openTxModal(initial = {}, opts = {}) {
     { name: 'ownerId', label: 'Responsável', type: 'select', options: store.ownerOptions(), required: true },
     { name: 'scope', label: 'Tipo de gasto', type: 'segmented', options: [{ value: 'individual', label: 'Individual' }, { value: 'shared', label: 'Compartilhado' }] },
     ...(hasBills() ? [{ name: 'fixedBillId', label: 'Vincular a conta/receita fixa', type: 'select', full: true, placeholder: 'Não é fixa', options: billOpts(t0), showIf: (v) => billsOf(v.type).length > 0 }] : []),
+    { name: 'refMonth', label: 'Mês a que a conta se refere', type: 'month', full: true, hint: 'Ex.: a luz de outubro paga em novembro. Vazio = vale o mês da data.', showIf: (v) => !!v.fixedBillId },
     { name: 'notes', label: 'Observações', type: 'textarea', full: true },
     { name: 'files', label: 'Comprovantes', type: 'files', full: true }
   ];
@@ -225,7 +226,7 @@ export function openTxModal(initial = {}, opts = {}) {
       else {
         const [kind, id] = (v.source || ':').split(':');
         payload = { type: v.type, amount: v.amount, date: v.date, description: v.description, merchant: initial.merchant || '', categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '',
-          accountId: kind === 'a' ? id : '', cardId: kind === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, fixedBillId: v.fixedBillId || '', ...(initial.refMonth ? { refMonth: initial.refMonth } : {}), method: v.method && v.method !== store.NEW_METHOD ? v.method : '', notes: v.notes };
+          accountId: kind === 'a' ? id : '', cardId: kind === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, fixedBillId: v.fixedBillId || '', refMonth: v.fixedBillId ? v.refMonth || '' : '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', notes: v.notes };
         if (!editing) payload.origin = initial.origin || (v.fixedBillId ? 'fixed' : 'manual');
       }
       const rec = await save(payload);

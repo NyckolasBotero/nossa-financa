@@ -173,6 +173,20 @@ export function billsForMonth(d, month, today, kind = 'expense') {
       return { bill: { ...b, amount: st.tx ? st.tx.amount : avg ?? b.amount }, base: b, avg, avgCount: count, ...st };
     }).sort((a, b) => a.due.localeCompare(b.due));
 }
+/**
+ * Contas pelo mês em que o dinheiro SAI (pagamento feito, ou vencimento se ainda não paga).
+ * A luz de outubro que vence em novembro pesa em novembro. No mês atual entram também as atrasadas, que ainda vão sair.
+ */
+export function billsByCashMonth(d, month, today, kind = 'expense') {
+  const cur = ym(today), out = [];
+  for (const m of [addMonths(month, -1), month, addMonths(month, 1)]) {
+    for (const x of billsForMonth(d, m, today, kind)) {
+      const cash = x.tx ? ym(x.tx.date) : ym(x.due);
+      if (cash === month || (month === cur && !x.tx && cash < cur)) out.push(x);
+    }
+  }
+  return out;
+}
 /** Série mês a mês das contas variáveis (uma linha por conta). */
 export function variableSeries(d, endMonth, n = 12, categoryId = '') {
   const months = Array.from({ length: n }, (_, i) => addMonths(endMonth, i - n + 1));
@@ -299,7 +313,7 @@ export function monthForecast(d, today, n, txs = d.transactions) {
   const month = addMonths(ym(today), n), v = variableStats(d, txs, today), inc = expectedIncome(d, today, txs);
   const fixedInc = sum(billsForMonth(d, month, today, 'income'), (x) => x.bill.amount);
   const income = round2(inc.recurringExpected + fixedInc);
-  const fixed = round2(sum(billsForMonth(d, month, today, 'expense'), (x) => x.bill.amount));   // variáveis: média; já pagas: valor real
+  const fixed = round2(sum(billsByCashMonth(d, month, today, 'expense'), (x) => x.bill.amount));   // pelo mês em que o dinheiro sai; variáveis: média; já pagas: valor real
   const variable = round2(v.daily * daysInMonth(month));
   return { month, income, fixed, variable, expense: round2(fixed + variable), leftover: round2(income - fixed - variable),
     lowConfidence: v.lowConfidence, hasIncomeHistory: inc.has || fixedInc > 0 };
@@ -307,7 +321,7 @@ export function monthForecast(d, today, n, txs = d.transactions) {
 
 /** Visão dos próximos meses: o mês atual (já com o que falta acontecer) e os seguintes. */
 export function outlook(d, today, months = 6, txs = d.transactions) {
-  const cur = monthResult(d, today, txs), curFixed = round2(sum(billsForMonth(d, ym(today), today, 'expense'), (x) => x.bill.amount));
+  const cur = monthResult(d, today, txs), curFixed = round2(sum(billsByCashMonth(d, ym(today), today, 'expense'), (x) => x.bill.amount));
   const rows = [{ month: ym(today), income: cur.income, fixed: curFixed, expense: round2(cur.spent + cur.remainingVariable + cur.pendingFixed), leftover: cur.result, lowConfidence: cur.lowConfidence, current: true }];
   for (let i = 1; i <= months; i++) rows.push({ ...monthForecast(d, today, i, txs), current: false });
   let acc = 0; for (const r of rows) { acc = round2(acc + r.leftover); r.cumulative = acc; }
@@ -452,7 +466,7 @@ export const refMonthOf = (payDate) => addMonths(ym(payDate), -1);
  */
 export function yearOverview(d, today, ahead = 6, txs = d.transactions) {
   const cur = ym(today), y = cur.slice(0, 4), rows = [];
-  const fixedOf = (m) => round2(sum(billsForMonth(d, m, today, 'expense'), (x) => x.bill.amount));
+  const fixedOf = (m) => round2(sum(billsByCashMonth(d, m, today, 'expense'), (x) => x.bill.amount));
   for (let m = `${y}-01`; m < cur; m = addMonths(m, 1)) {
     const tot = monthTotals(d, m, txs);
     const fx = round2(sum(txs.filter((t) => t.type === 'expense' && t.fixedBillId && ym(t.date) === m && !isFood(d, t)), (t) => t.amount));

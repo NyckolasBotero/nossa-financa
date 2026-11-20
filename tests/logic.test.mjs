@@ -347,6 +347,18 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     const r = P.billsForMonth(dd, '2026-12', '2026-11-20').find((x) => x.bill.id === 'r');
     assert.equal(r.avgCount, 2); assert.equal(r.avg, 212.94);
   });
+  ok('previsão pelo mês em que o dinheiro sai (conta que vence no mês seguinte)', () => {
+    const b = { id: 'lz', kind: 'expense', billType: 'variable', name: 'Luz', amount: 200, dueDay: 5, dueOffset: 1, startMonth: '2026-06' };
+    const dd = { transactions: [], fixedBills: [b], categories: [], cards: [], accounts: [], goals: [], settings: {} };
+    const today = '2026-10-10';
+    const due = (m) => P.billsByCashMonth(dd, m, today).map((x) => x.due);
+    assert.deepEqual(due('2026-11'), ['2026-11-05']);   // luz de outubro, paga em novembro
+    assert.deepEqual(due('2026-12'), ['2026-12-05']);   // luz de novembro, paga em dezembro
+    assert.equal(P.billsByCashMonth(dd, '2026-10', today).length, 1);   // luz de setembro (atrasada, ainda sai este mês)
+    const paid = { ...dd, transactions: [{ id: 'p', date: '2026-10-08', amount: 230, type: 'expense', fixedBillId: 'lz', refMonth: '2026-09', ownerId: 'u', accountId: 'a' }] };
+    assert.equal(P.billsByCashMonth(paid, '2026-10', today).reduce((s, x) => s + x.bill.amount, 0), 230 + 0);   // paga: pesa no mês do pagamento; a de outubro só vence em novembro
+    assert.equal(P.monthForecast(dd, today, 1).fixed, 200);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);
