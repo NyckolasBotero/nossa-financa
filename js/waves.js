@@ -1,8 +1,17 @@
-/** waves.js — três ondas com formatos diferentes (altas, baixas e de curvas distintas), em laço contínuo. */
-export const WAVE_PATHS = {
-  a: 'M0 66C48 57 93 17 150 16C207 15 278 59 340 58C402 57 460 7 520 8C580 9 637 59 700 62C763 65 840 23 900 24C960 25 1010 63 1060 70C1110 77 1152 75 1200 66C1248 57 1293 17 1350 16C1407 15 1478 59 1540 58C1602 57 1660 7 1720 8C1780 9 1837 59 1900 62C1963 65 2040 23 2100 24C2160 25 2210 63 2260 70C2310 77 2352 75 2400 66V120H0Z',
-  b: 'M0 94C67 93 158 69 230 68C302 67 362 90 430 88C498 86 568 55 640 56C712 57 795 89 860 92C925 95 973 74 1030 74C1087 74 1133 95 1200 94C1267 93 1358 69 1430 68C1502 67 1562 90 1630 88C1698 86 1768 55 1840 56C1912 57 1995 89 2060 92C2125 95 2173 74 2230 74C2287 74 2333 95 2400 94V120H0Z',
-  c: 'M0 46C42 54 85 91 140 88C195 85 263 30 330 28C397 26 478 76 540 74C602 72 633 15 700 14C767 13 875 62 940 66C1005 70 1047 43 1090 40C1133 37 1158 38 1200 46C1242 54 1285 91 1340 88C1395 85 1463 30 1530 28C1597 26 1678 76 1740 74C1802 72 1833 15 1900 14C1967 13 2075 62 2140 66C2205 70 2247 43 2290 40C2333 37 2358 38 2400 46V120H0Z',
+/**
+ * waves.js — fundo decorativo do menu e do login: barrinhas com uma bolinha em cima (a família do logo)
+ * subindo como um gráfico, nas quatro cores da marca, respirando em ondas. O nome waveSet foi mantido.
+ * barSet(n): n barras; a tendência sobe da esquerda para a direita, com variações.
+ */
+const WOBBLE = [0, 7, -4, 9, -2, 5, -6, 8, 1, -5, 6, -3];             // variação pequena para não ficar uniforme
+export const barSet = (n = 4) => {
+  let h = '';
+  for (let i = 0; i < n; i++) {
+    const trend = 26 + 52 * (n > 1 ? i / (n - 1) : 1);                  // sobe da esquerda para a direita, como um gráfico
+    const v = Math.round(Math.max(18, Math.min(74, trend + WOBBLE[i % WOBBLE.length])));
+    h += `<i class="fam-bar c${(i % 4) + 1}" style="--h:${v};--dl:${(-i * 0.9).toFixed(1)}s;--dur:${(5.2 + (i % 3) * 1.1).toFixed(1)}s"></i>`;
+  }
+  return `<div class="fam-bars">${h}</div>`;
 };
-/** Conjunto de 3 ondas para o menu (w1..w3) ou para a tela de login. */
-export const waveSet = () => [['w2', 'a'], ['w3', 'b'], ['w1', 'c']].map(([cls, k]) => `<svg class="wave ${cls}" viewBox="0 0 2400 120" preserveAspectRatio="none"><path d="${WAVE_PATHS[k]}"/></svg>`).join('');
+/** Menu (poucas barras) ou tela de login (muitas, ocupando a largura). */
+export const waveSet = (wide = false) => barSet(wide ? 22 : 4);

@@ -31,12 +31,20 @@
 
 /* ---------- ondas infinitas no menu (cores/velocidade mudam com o tema) ---------- */
 .waves { left: 0; right: 0; bottom: 0; height: 52%; overflow: hidden; pointer-events: none; -webkit-mask-image: linear-gradient(to top, #000 55%, transparent); mask-image: linear-gradient(to top, #000 55%, transparent); }
-.wave { position: absolute; left: 0; bottom: 0; width: 200%; height: 100%; animation: wave-x calc(var(--wv) * var(--wave-speed) * 1s) linear infinite; }
-.wave path { fill: var(--wc); }
-.w1 { --wv: 16; --wc: var(--wave-1); height: 70%; } .w2 { --wv: 24; --wc: var(--wave-2); height: 88%; animation-direction: reverse; } .w3 { --wv: 11; --wc: var(--wave-3); height: 56%; }
-:root[data-theme="dark"] .w1 { filter: drop-shadow(0 -4px 10px rgba(77, 181, 238, .35)); }
-@keyframes wave-x { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-.waves-page { position: fixed; z-index: 0; left: 0; right: 0; bottom: 0; height: 36vh; }
+/* barrinhas com cabeça = a família do logo crescendo como um gráfico (menu e login) */
+.fam-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; gap: var(--fb-gap, 8px); padding: 0 var(--fb-pad, 12px); }
+.fam-bar { --bc: var(--logo-1); position: relative; flex: 1 1 0; max-width: var(--fb-max, 64px); height: calc(var(--h) * 1% + 12%); margin-bottom: -12%; border-radius: 999px 999px 0 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bc) 24%, transparent), color-mix(in srgb, var(--bc) 8%, transparent));
+  animation: fam-rise var(--dur, 6s) ease-in-out infinite; animation-delay: var(--dl, 0s); }
+.fam-bar::before { content: ""; position: absolute; left: 50%; bottom: calc(100% + 6px); width: 72%; aspect-ratio: 1; transform: translateX(-50%); border-radius: 50%; background: color-mix(in srgb, var(--bc) 24%, transparent); }
+.fam-bar.c2 { --bc: var(--logo-2); } .fam-bar.c3 { --bc: var(--logo-4); } .fam-bar.c4 { --bc: var(--logo-3); }
+:root[data-theme="dark"] .fam-bar { background: linear-gradient(to top, color-mix(in srgb, var(--bc) 38%, transparent), color-mix(in srgb, var(--bc) 10%, transparent)); }
+:root[data-theme="dark"] .fam-bar::before { background: color-mix(in srgb, var(--bc) 38%, transparent); }
+@keyframes fam-rise { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7%); } }
+.side > .waves { height: 34%; }
+.side .fam-bars { --fb-gap: 7px; --fb-pad: 11px; --fb-max: 40px; }
+.waves-page .fam-bars { --fb-gap: clamp(10px, 2vw, 26px); --fb-pad: 2vw; --fb-max: 54px; }
+.waves-page { position: fixed; z-index: 0; left: 0; right: 0; bottom: 0; height: 30vh; }
 .connect .waves-page { position: absolute; }
 
 /* ---------- topo e tema ---------- */
@@ -172,7 +180,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
   .fab { bottom: calc(84px + env(safe-area-inset-bottom)); }
   .waves-page { height: 22vh; }
 }
-@media (prefers-reduced-motion: reduce) { .orb, .wave, .side::before, .ld-ring, .ld-icons .ld-ic, .ld-family, .ld-logo g, .ld-glow, .cup .c-wave1, .cup .c-wave2, .cup .c-bubble { animation: none !important; } .ld-ic:first-child { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .orb, .fam-bar, .side::before, .ld-ring, .ld-icons .ld-ic, .ld-family, .ld-logo g, .ld-glow, .cup .c-wave1, .cup .c-wave2, .cup .c-bubble { animation: none !important; } .ld-ic:first-child { opacity: 1; } }
 
 @keyframes needle-in { from { transform: rotate(0deg); } }
 .needle-in { animation: needle-in 1.6s cubic-bezier(.2, 1.35, .3, 1) backwards .2s; }
@@ -193,7 +201,6 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 /* ---------- ajustes: tema no menu, ondas, famílias do velocímetro ---------- */
 .nav-i .ic { flex: none; }
 .nav-i .ts-sun { display: none; } :root[data-theme="dark"] .nav-i .ts-moon { display: none; } :root[data-theme="dark"] .nav-i .ts-sun { display: block; }
-.side .wave { width: 720px; right: auto; }
 .side .waves { width: 100%; }
 .nav-i { min-height: 44px; }
 .btn-danger-soft { background: color-mix(in srgb, var(--expense) 13%, transparent); color: var(--expense); }

@@ -19,7 +19,7 @@ const show = (el, on) => { el.hidden = !on; };
 initRipple(); initOrbs();
 
 // ---------------------------------------------------------------- acesso: entrar, criar conta, recuperar senha
-const WAVES = `<div class="waves waves-page" aria-hidden="true">${waveSet()}</div>`;
+const WAVES = `<div class="waves waves-page" aria-hidden="true">${waveSet(true)}</div>`;
 const device = () => (navigator.userAgent || '').slice(0, 60);
 const anon = (action, payload) => api.call(action, payload, { conn: { url: CONFIG.API_URL || api.getConn().url, token: '' }, anon: true });
 
