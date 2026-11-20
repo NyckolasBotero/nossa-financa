@@ -119,7 +119,7 @@ function paintStatic() {
   const themeIcons = `${icon('moon', 'i-moon')}${icon('sun', 'i-sun')}`;
   $('#theme-btn').innerHTML = themeIcons;
   $('#theme-side').innerHTML = `${icon('moon', 'ts-moon')}${icon('sun', 'ts-sun')}<span class="nav-l">Tema claro/escuro</span>`;
-  $('#side-waves').innerHTML = waveSet();
+  $('#side-waves').innerHTML = '';   // menu sem decoração no fundo
   $$('[data-ic]').forEach((el) => { el.innerHTML = icon(el.dataset.ic); });
   $('#sync-btn').innerHTML = `${icon('sync')}<span class="nav-l">Sincronizar</span>`;
 }
