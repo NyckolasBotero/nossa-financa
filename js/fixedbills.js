@@ -54,15 +54,18 @@ export function openBillModal(bill = null, kindArg = 'expense') {
       const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.startMonth || '', endMonth: v.endMonth || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
       const rec = editing ? await store.update('fixedBills', { id: bill.id, ...payload }) : await store.create('fixedBills', payload);
       toast(t.saved, { kind: 'ok' }); c.close();
-      if (payload.billType === 'variable' && (!editing || bill.billType !== 'variable')) await linkHistory(rec);
+      if (payload.billType === 'variable') await linkHistory(rec, { quiet: false });
     }
   });
 }
 
 /** Ao virar variável: oferece ligar os gastos antigos do extrato com o nome da conta (ex.: todos os de "Água"). */
-async function linkHistory(rec) {
+async function linkHistory(rec, { quiet = false } = {}) {
   const list = store.state.transactions.filter((x) => !x.archived && !x.fixedBillId && P.matchesBill(x, rec)).slice(0, 80);
-  if (!list.length) return;
+  if (!list.length) {
+    if (!quiet && !store.state.transactions.some((x) => x.fixedBillId === rec.id)) toast(`Nenhum lançamento do extrato tem "${rec.name}" no nome. Use o mesmo nome do extrato ou pague pelo botão Pagar.`, { kind: 'warn' });
+    return;
+  }
   const total = list.reduce((a, x) => a + x.amount, 0);
   if (!(await confirmDialog({ title: `Mover o histórico de "${rec.name}"`, text: `Encontrei ${list.length} ${list.length === 1 ? 'lançamento' : 'lançamentos'} no extrato com esse nome (${brl(total)} no total). Ligar todos a esta conta variável para montar a média e o gráfico mês a mês?`, okLabel: 'Ligar histórico' }))) return;
   const nt = notify.start('Ligando histórico…', `${list.length} lançamentos`);
@@ -106,7 +109,7 @@ export function render(view) {
       ${P.isVariable(bill) ? `<p class="muted small">Variável${avg != null ? ` · média ${esc(brl(avg))} (${avgCount} ${avgCount === 1 ? 'mês' : 'meses'})` : ' · ainda sem histórico'}</p>` : ''}
       ${h.counted >= 3 && h.late > 0 ? `<p class="hint-warn">${income ? 'Atrasou' : 'Atrasou'} em ${h.late} dos últimos ${h.counted} meses</p>` : ''}</div>
       <div class="bill-r"><b class="${income ? 'pos' : ''}">${esc(brl(bill.amount))}</b>${pill(label, tone)}</div>
-      <div class="bill-a">${status === 'paid' ? '' : `<button class="btn btn-primary sm" data-pay="${esc(bill.id)}">${t.act}</button>`}<button class="btn btn-soft sm" data-edit="${esc(bill.id)}">Editar</button><button class="btn btn-danger-soft sm" data-arch="${esc(bill.id)}" aria-label="Excluir ${esc(bill.name)}">Excluir</button></div></article>`;
+      <div class="bill-a">${status === 'paid' ? '' : `<button class="btn btn-primary sm" data-pay="${esc(bill.id)}">${t.act}</button>`}<button class="btn btn-soft sm" data-edit="${esc(bill.id)}">Editar</button>${P.isVariable(bill) ? `<button class="btn btn-ghost sm" data-link="${esc(bill.id)}">Ligar histórico</button>` : ''}<button class="btn btn-danger-soft sm" data-arch="${esc(bill.id)}" aria-label="Excluir ${esc(bill.name)}">Excluir</button></div></article>`;
   }).join('') : `<div class="card">${income
     ? emptyState('wallet', 'Nenhuma receita fixa neste mês', 'Cadastre salário, aluguel recebido, pensão... Elas entram na projeção de entradas dos próximos meses.', '<button class="btn btn-primary" data-new>Cadastrar receita fixa</button>')
     : emptyState('calendar', 'Nenhuma conta fixa neste mês', 'Cadastre aluguel, internet, escola... Elas entram na previsão de gastos e nos alertas de atraso.', '<button class="btn btn-primary" data-new>Cadastrar conta fixa</button>')}</div>`;
@@ -115,6 +118,7 @@ export function render(view) {
   view.onclick = async (e) => {
     const g = (a) => e.target.closest(`[data-${a}]`)?.dataset[a];
     if (e.target.closest('[data-new]')) return openBillModal(null, kind);
+    if (g('link')) return linkHistory(store.byId('fixedBills', g('link')));
     if (g('pay')) return payBill(rows.find((r) => r.bill.id === g('pay')).bill);
     if (g('edit')) return openBillModal(store.byId('fixedBills', g('edit')));
     if (g('arch')) {
