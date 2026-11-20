@@ -1,14 +1,14 @@
 /**
  * loader.js — tela de carregamento: a mesma animação do logo (bolinhas → círculo → coração → boleto → moeda →
- * casinha → barras → família em pé), um pouco mais rápida. Ao terminar de carregar, se a família está perto de
- * ficar pronta ela espera um instante, para não cortar a animação no meio.
+ * casinha → barras → família em pé), um pouco mais rápida. Mesmo que a página já tenha carregado, a tela só
+ * some depois que a animação termina (família completa).
  * showLoader(texto) / hideLoader(). Dá para chamar várias vezes: conta referências.
  */
 import { mountBrandAnim } from './brandanim.js';
 import { familySvg } from './logo.js';
 
 const SPEED = 2;           // velocidade da animação no carregamento
-const MAX_WAIT = 2500;     // até quanto esperar a família ficar pronta (ms)
+const END_HOLD = 450;      // ms que a família fica completa antes de a tela sumir
 
 let anim = null;
 
@@ -32,7 +32,7 @@ export function setLoaderText(text) { const t = el?.querySelector('.ld-text'); i
 export function hideLoader(force = false) {
   refs = force ? 0 : Math.max(0, refs - 1);
   if (refs > 0 || !el) return;
-  const left = anim ? anim.untilFamily() * 1000 : 0;                 // falta pouco para a família ficar pronta? espera
-  const wait = Math.max(left <= MAX_WAIT ? left : 0, 700 - (Date.now() - shownAt));    // e evita "piscar" quando a resposta é rápida
+  const left = anim ? anim.untilFamily() * 1000 + END_HOLD : 0;      // espera a animação terminar, mesmo com a página pronta
+  const wait = Math.max(left, 700 - (Date.now() - shownAt));
   hideTimer = setTimeout(() => { el?.classList.remove('in'); const gone = el; setTimeout(() => { if (refs === 0) { gone?.remove(); anim?.stop(); anim = null; } }, 420); }, wait);
 }

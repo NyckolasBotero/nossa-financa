@@ -1,6 +1,6 @@
 /**
  * brandanim.js — logo animado do menu. Quatro bolinhas viram um círculo com 4 partes coloridas, depois
- * coração, boleto, moeda e casinha (cada forma pulsa antes de virar a próxima); no fim as bolinhas
+ * coração e casinha (cada forma pulsa antes de virar a próxima); no fim as bolinhas
  * crescem como barras de um gráfico e as cabeças aparecem, revelando a família em pé, lado a lado.
  * A família fica parada um tempo, desfaz e recomeça — enquanto o site estiver aberto.
  * Cores vêm das variáveis --logo-1..4 (acompanham o tema). Sem movimento reduzido: logo estático.
@@ -19,8 +19,6 @@ const BW = [26, 24, 20, 15], HFIN = [80, 73, 52, 35], STAND_X = [-49, -11, 25, 5
 const D = {
   ring: 'M0 -62A62 62 0 1 1 0 62A62 62 0 1 1 0 -62Z',
   heart: 'M0 -34C10 -58 52 -56 52 -22C52 8 20 30 0 52C-20 30 -52 8 -52 -22C-52 -56 -10 -58 0 -34Z',
-  box: 'M0 -43H63A12 12 0 0 1 75 -31V31A12 12 0 0 1 63 43H-63A12 12 0 0 1 -75 31V-31A12 12 0 0 1 -63 -43Z',
-  coin: 'M0 -58A58 58 0 1 1 0 58A58 58 0 1 1 0 -58Z',
   house: 'M0 -64L66 -8V56H-66V-8Z'
 };
 const N = 720, K = 26;
@@ -40,7 +38,7 @@ const KF = [[0, 'dots', 0, 0, 1, 'e'], [1.5, 'dots', 0, 0, 1, 'e']];
 const ANTICIP = [], ARR = [], PUL = [];
 {
   let tt = 1.5;
-  [['ring', 1.0, 0.6], ['heart', 0.95, 0.9], ['box', 0.95, 0.6], ['coin', 0.95, 0.9], ['house', 0.95, 0.6]].forEach((c) => {
+  [['ring', 1.0, 0.6], ['heart', 0.95, 0.9], ['house', 0.95, 0.6]].forEach((c) => {
     const arr = tt + c[1]; KF.push([arr, c[0], 0, 0, 1, 'i']);
     tt = arr + c[2] + 0.4; KF.push([tt, c[0], 0, 0, 1, 'e']);
     ARR.push(arr); PUL.push(c[2]); ANTICIP.push(tt);
@@ -147,8 +145,6 @@ const markup = (id) => `<svg class="logo-anim" viewBox="-66 -57 132 114" role="i
     <g class="ba-gh2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0"><path/><path/><path/><path/></g>
     <g class="ba-gh1" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0"><path/><path/><path/><path/></g>
     <g class="ba-shape">
-      <g class="ba-barcode" opacity="0"></g>
-      <g class="ba-coin" opacity="0"><circle r="40" fill="none" stroke-width="2.5"/><text y="12" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="700" font-size="34">R$</text></g>
       <g class="ba-goo" filter="url(#${id})"><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
     </g>
     <g class="ba-fam" visibility="hidden">
@@ -174,16 +170,13 @@ export function mountBrandAnim(host, { speed = 1 } = {}) {
   } catch { return still(); }
 
   const q = (c) => svg.querySelector('.' + c);
-  const world = q('ba-world'), shapeG = q('ba-shape'), famG = q('ba-fam'), goo = q('ba-goo'), fx = q('ba-fx'), barcode = q('ba-barcode'), coin = q('ba-coin'), floor = q('ba-floor');
+  const world = q('ba-world'), shapeG = q('ba-shape'), famG = q('ba-fam'), goo = q('ba-goo'), fx = q('ba-fx'), floor = q('ba-floor');
   const gh1 = q('ba-gh1'), gh2 = q('ba-gh2'), ghp = [[...gh1.children], [...gh2.children]];
   const paths = [...goo.children];
   const figs = [...famG.querySelectorAll(':scope > g')];
   const bods = figs.map((f) => f.firstElementChild), heads = figs.map((f) => f.lastElementChild);
   let pal = readPal();
 
-  let bars = '';
-  [[-52, 3], [-44, 2], [-38, 4], [-29, 2], [-23, 3], [-15, 5], [-5, 2], [1, 3], [8, 2], [14, 5], [24, 3], [31, 2], [38, 4], [47, 3]].forEach((b) => { bars += `<rect x="${b[0]}" y="-22" width="${b[1]}" height="44" rx="1"/>`; });
-  barcode.innerHTML = bars;
 
   // ---- encontros: gotinhas, ondinhas e brilho (um efeito diferente por forma)
   let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
@@ -193,7 +186,7 @@ export function mountBrandAnim(host, { speed = 1 } = {}) {
     if (kind === 'ring') o.el.setAttribute('fill', 'none');
     parent.appendChild(o.el); ITEMS.push(o);
   };
-  const EVT = { 2: ['bulge', 'drops'], 4: ['ripple', 'dropsS'], 6: ['bulge', 'glint'], 8: ['splash', 'ripple'], 10: ['ripple', 'bulge'], 12: ['drops', 'ripple', 'glint'] };
+  const EVT = { 2: ['bulge', 'drops'], 4: ['ripple', 'dropsS'], 6: ['ripple', 'bulge'], 8: ['drops', 'ripple', 'glint'] };
   function build(ei) {
     const A = KF[ei - 1], B = KF[ei], t0 = A[0] + 0.5 * (B[0] - A[0]), th = B[3] * Math.PI / 180, P = [];
     for (let i = 0; i < 4; i++) P.push(samp(TAB[B[1]].pts, START[i] + B[2]));
@@ -228,8 +221,6 @@ export function mountBrandAnim(host, { speed = 1 } = {}) {
     heads.forEach((h, i) => h.setAttribute('fill', pal.c[i]));
     bods.forEach((el, i) => { el.setAttribute('fill', pal.c[i]); el.setAttribute('stroke', el.tagName === 'polygon' ? pal.c[i] : 'none'); });
     floor.setAttribute('stroke', pal.muted);
-    barcode.setAttribute('fill', pal.muted);
-    coin.firstElementChild.setAttribute('stroke', pal.line); coin.lastElementChild.setAttribute('fill', pal.c[2]);
   }
 
   function drawShape(t, els, withBounce) {
@@ -272,18 +263,15 @@ export function mountBrandAnim(host, { speed = 1 } = {}) {
         gh1.setAttribute('opacity', g1.toFixed(2)); gh2.setAttribute('opacity', (g1 * 0.5).toFixed(2));
         gh1.setAttribute('transform', 'rotate(' + sa.rot.toFixed(2) + ')'); gh2.setAttribute('transform', 'rotate(' + sb.rot.toFixed(2) + ')');
       } else { gh1.setAttribute('opacity', 0); gh2.setAttribute('opacity', 0); }
-      let pulse = 1, flip = 1;
+      let pulse = 1;
       for (let i = 0; i < ARR.length; i++) {
         const u = (tt - ARR[i]) / PUL[i];
         if (u > 0 && u < 1) {
-          if (i === 3) flip = Math.max(0.06, Math.abs(Math.cos(Math.PI * eio(u))));
-          else { const sn = Math.sin((i === 1 ? 2 : 1) * Math.PI * u); pulse = 1 + (i === 1 ? 0.08 : 0.05) * sn * sn; }
+          { const sn = Math.sin((i === 1 ? 2 : 1) * Math.PI * u); pulse = 1 + (i === 1 ? 0.08 : 0.05) * sn * sn; }
         }
       }
-      const a = squash(tt), sx = st.sc * pulse * flip * (1 + 0.07 * a), sy = st.sc * pulse * (1 - 0.07 * a);
+      const a = squash(tt), sx = st.sc * pulse * (1 + 0.07 * a), sy = st.sc * pulse * (1 - 0.07 * a);
       shapeG.setAttribute('transform', 'rotate(' + st.rot.toFixed(2) + ') scale(' + sx.toFixed(3) + ' ' + sy.toFixed(3) + ')');
-      barcode.setAttribute('opacity', (eio((tt - (ARR[2] - 0.4)) / 0.4) * (1 - eio((tt - (ANTICIP[2] - 0.25)) / 0.5))).toFixed(2));
-      coin.setAttribute('opacity', (eio((tt - (ARR[3] - 0.4)) / 0.4) * (1 - eio((tt - (ANTICIP[3] - 0.25)) / 0.4))).toFixed(2));
     } else {
       gh1.setAttribute('opacity', 0); gh2.setAttribute('opacity', 0);
       // as bolinhas da base crescem como barras de gráfico (verde, na direita, primeiro); depois as cabeças revelam a família
@@ -305,7 +293,6 @@ export function mountBrandAnim(host, { speed = 1 } = {}) {
       }
       floor.setAttribute('opacity', (0.5 * eio(tau / 0.5) * (1 - eio((tau - 1.6) / 0.5))).toFixed(2));
       shapeG.setAttribute('transform', '');
-      barcode.setAttribute('opacity', 0); coin.setAttribute('opacity', 0);
     }
 
     for (let i = 0; i < ITEMS.length; i++) {
