@@ -7,7 +7,7 @@
 import { mountBrandAnim } from './brandanim.js';
 import { familySvg } from './logo.js';
 
-const SPEED = 2;           // velocidade da animação no carregamento
+const SPEED = 1;           // velocidade da animação no carregamento
 const END_HOLD = 450;      // ms que a família fica completa antes de a tela sumir
 
 let anim = null;
