@@ -45,6 +45,12 @@ export function openBillModal(bill = null, kindArg = 'expense') {
       { name: 'refOnce', label: 'Mês a que a conta se refere', type: 'month', required: true, hint: 'Ex.: a luz de outubro. Depois use Pagar na data em que realmente pagar; o gasto cai no mês do pagamento.', showIf: (v) => v.repeat === 'once' }
     ],
     onChange: async (name, c) => {
+      if (name === 'repeat') {   // de avulsa para "repete todo mês": o fim guardado (= o próprio mês) faria a conta voltar a ser avulsa
+        const v = c.values();
+        if (v.repeat === 'monthly') { if (v.endMonth && v.endMonth === v.startMonth) c.set('endMonth', ''); }
+        else if (v.refOnce === undefined || !v.refOnce) c.set('refOnce', v.startMonth || store.prefs.month);
+        return;
+      }
       if (name === 'categoryId' && c.values().categoryId === store.NEW_CAT) {
         c.set('categoryId', '');
         const id = await askCategory(kind);
@@ -58,7 +64,7 @@ export function openBillModal(bill = null, kindArg = 'expense') {
     },
     onSubmit: async (v, c) => {
       const [k, id] = (v.source || ':').split(':');
-      const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', dueOffset: kind === 'expense' && v.dueOffset ? 1 : 0, accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.repeat === 'once' ? v.refOnce || '' : v.startMonth || '', endMonth: v.repeat === 'once' ? v.refOnce || '' : v.endMonth || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
+      const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', dueOffset: kind === 'expense' && v.dueOffset ? 1 : 0, accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.repeat === 'once' ? v.refOnce || '' : v.startMonth || '', endMonth: v.repeat === 'once' ? v.refOnce || '' : (v.endMonth && v.endMonth !== v.startMonth ? v.endMonth : ''), method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
       const rec = editing ? await store.update('fixedBills', { id: bill.id, ...payload }) : await store.create('fixedBills', payload);
       toast(t.saved, { kind: 'ok' }); c.close();
       if (payload.billType === 'variable' && v.repeat !== 'once') await linkHistory(rec, { quiet: false });
