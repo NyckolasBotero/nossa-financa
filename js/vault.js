@@ -19,12 +19,12 @@ async function ensureGoal(info) {
   return store.create('goals', { name: 'Cofre de segurança', target: Math.max(0.01, info.target || 1), deadline: '', ownerId: store.state.me.id, scope: 'shared', kind: 'vault' });
 }
 
-export function openVaultDeposit() {
+export function openVaultDeposit(amount = null) {
   const accounts = store.activeOf('accounts');
   if (!accounts.length) return toast('Cadastre uma conta para guardar dinheiro no cofre.', { kind: 'warn' });
   const clientId = uuid();
   return formModal({
-    title: 'Guardar no cofre de segurança', submitLabel: 'Guardar', values: { date: store.today(), accountId: accounts[0].id },
+    title: 'Guardar no cofre de segurança', submitLabel: 'Guardar', values: { date: store.today(), accountId: accounts[0].id, amount: typeof amount === 'number' ? amount : null },
     fields: [
       { name: 'amount', label: 'Valor', type: 'money', required: true },
       { name: 'date', label: 'Data', type: 'date', required: true },

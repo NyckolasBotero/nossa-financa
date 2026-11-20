@@ -123,6 +123,23 @@ export function openPayslipEditor(ps = null, prefill = null) {
   form.addEventListener('submit', submit);
   return modal;
 }
+/** Ligação automática: contracheques já lançados cujo salário não consta como recebido em Receitas fixas. */
+const tried = new Set();
+export async function autoLinkPayslips() {
+  const d = store.data();
+  const incomes = store.activeOf('fixedBills').filter((b) => P.billKind(b) === 'income');
+  let n = 0;
+  for (const ps of store.activeOf('payslips')) {
+    const tx = ps.transactionId ? store.state.transactions.find((t) => t.id === ps.transactionId && !t.archived) : null;
+    if (!tx || tx.fixedBillId || tried.has(ps.id)) continue;
+    tried.add(ps.id);
+    const mine = incomes.filter((b) => b.ownerId === ps.ownerId || b.scope === 'shared');
+    const fb = mine.find((b) => store.categoryOf(b.categoryId)?.tag === 'salary') || mine.find((b) => /sal[aá]rio|contracheque|folha|pagamento/i.test(b.name)) || (mine.length === 1 ? mine[0] : null);
+    if (!fb || P.billStatus(d, fb, tx.date.slice(0, 7), store.today()).tx) continue;   // já há outra receita quitando esse mês
+    try { await store.update('transactions', { id: tx.id, fixedBillId: fb.id }, { silent: true, feedback: null }); n++; } catch { /* tenta de novo na próxima sessão */ }
+  }
+  if (n) toast(`${n} ${n === 1 ? 'contracheque ligado' : 'contracheques ligados'} à receita fixa.`, { kind: 'ok' });
+}
 export const openPayslipModal = () => openPayslipEditor();
 
 export async function removePayslip(ps) {
@@ -136,6 +153,7 @@ export async function removePayslip(ps) {
 }
 
 export function render(view) {
+  autoLinkPayslips();
   const who = store.prefs.who, list = store.activeOf('payslips').filter((x) => who === 'family' || x.ownerId === who).sort((a, b) => (a.refMonth < b.refMonth ? 1 : a.refMonth > b.refMonth ? -1 : a.payDate < b.payDate ? 1 : -1));
   const k = (l, v, cls = '', s = '') => `<div class="kpi mini"><span class="kpi-l">${l}</span><span class="kpi-v ${cls}">${esc(v)}</span>${s ? `<span class="kpi-s">${esc(s)}</span>` : ''}</div>`;
   const last12 = list.filter((x) => x.refMonth >= P.addMonths(store.today().slice(0, 7), -12));
@@ -149,12 +167,15 @@ export function render(view) {
     return `<article class="bill ps-card"><div class="ps-month"><b>${esc(monthLabel(x.refMonth))}</b><small>referência</small></div>
       <div class="bill-main"><h3>Líquido ${esc(brl(x.net))}</h3><p class="muted">Caiu em ${esc(fmtDate(x.payDate))} · ${esc(store.userName(x.ownerId))}${tx ? ' · lançado no extrato' : ''}</p></div>
       <div class="bill-r"><b class="pos">${esc(brl(x.net))}</b>${pill(`Descontos ${brlShort(x.discounts || 0)}`, 'neutral')}</div>
+      ${(() => { const m = x.payDate.slice(0, 7), bills = P.round2(P.billsForMonth(store.data(), m, store.today()).reduce((s, r) => s + r.bill.amount, 0)), left = P.round2(x.net - bills); return bills > 0 ? `<p class="ps-left muted">Após as contas fixas de ${esc(monthLabel(m))} (${esc(brl(bills))}) sobram <b class="${left >= 0 ? 'pos' : 'neg'}">${esc(brl(left))}</b>${left > 0 ? ` <button class="btn btn-soft sm" data-save="${left}">Guardar no cofre</button>` : ''}</p>` : ''; })()}
       <details class="bill-det"><summary>Ver itens</summary>${rows}${x.notes ? `<p class="muted small">${esc(x.notes)}</p>` : ''}</details>
       <div class="bill-a"><button class="btn btn-soft sm" data-edit="${esc(x.id)}">Editar</button><button class="btn btn-danger-soft sm" data-del="${esc(x.id)}">Excluir</button></div></article>`;
   }).join('') : `<div class="card">${emptyState('doc', 'Nenhum contracheque lançado', 'Informe os itens do contracheque (ou leia o PDF/foto). O líquido vira receita na data em que caiu.', '<button class="btn btn-primary" data-new>Lançar contracheque</button>')}</div>`;
-  view.onclick = (e) => {
+  view.onclick = async (e) => {
     if (e.target.closest('[data-new]')) return openPayslipEditor();
     const ed = e.target.closest('[data-edit]'), de = e.target.closest('[data-del]');
+    const sv = e.target.closest('[data-save]');
+    if (sv) return (await import('./vault.js')).openVaultDeposit(Number(sv.dataset.save));
     if (ed) return openPayslipEditor(store.byId('payslips', ed.dataset.edit));
     if (de) return removePayslip(store.byId('payslips', de.dataset.del));
   };

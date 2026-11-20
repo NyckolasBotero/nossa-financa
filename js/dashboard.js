@@ -50,6 +50,7 @@ export function render(view) {
       <div class="cup-wrap">${cup(glass.level, { label: 'Reserva' })}
       <div class="cup-info"><span class="cup-pct">${Math.round(glass.level * 100)}%</span><b>${esc(brl(glass.saved))} guardados</b>${basisText ? `<span class="muted">${esc(basisText)}</span>` : '<span class="muted">Crie uma meta (ou guarde dinheiro) e o copo começa a encher.</span>'}${glass.level >= 1 ? pill('Copo cheio! Meta atingida', 'ok') : ''}<a class="btn btn-soft sm" href="#/goals">Guardar dinheiro</a></div></div></article>`;
 
+  import('./payslips.js').then((m) => m.autoLinkPayslips()).catch(() => {});
   // cofre de segurança + despensa
   const vt = vaultSummary(), pt = pantrySummary();
   const vtTone = vt.cost.value <= 0 ? 'muted' : vt.monthsSafe >= vt.months ? 'ok' : vt.monthsSafe >= vt.months / 2 ? 'warn' : 'over';
