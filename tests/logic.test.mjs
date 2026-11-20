@@ -296,6 +296,18 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     const paid = { id: 'q', type: 'expense', amount: 200, date: '2026-11-01', refMonth: '2026-10', fixedBillId: 'lz2', ownerId: 'u', accountId: 'a', createdAt: '2026-11-01' };
     assert.equal(P.billStatus({ ...dd, transactions: [paid] }, b, '2026-10', '2026-11-12').lateDays, 0);
   });
+  ok('salário à mão x contracheque: o contracheque substitui e o aviso some', () => {
+    const cats = [{ id: 'cs', type: 'income', tag: 'salary' }];
+    const man = { id: 'm1', type: 'income', amount: 2500, date: '2026-11-05', ownerId: 'u', categoryId: 'cs', origin: 'manual' };
+    const outro = { id: 'm2', type: 'income', amount: 100, date: '2026-11-06', ownerId: 'u', categoryId: '', origin: 'manual' };
+    const dd = { ...d, categories: cats, fixedBills: [], transactions: [man, outro], _ix: undefined };
+    assert.equal(P.manualSalaryFor(dd, [], 'u', '2026-11-05').id, 'm1');
+    assert.equal(P.manualSalaryFor(dd, [], 'w', '2026-11-05'), null);
+    assert.equal(P.manualSalaryFor(dd, [], 'u', '2026-12-05'), null);
+    assert.deepEqual(P.salaryWithoutPayslip(dd, []).map((x) => [x.month, x.total]), [['2026-11', 2500]]);
+    assert.equal(P.salaryWithoutPayslip(dd, [{ id: 'p', transactionId: 'm1' }]).length, 0);
+    assert.equal(P.manualSalaryFor(dd, [{ id: 'p', transactionId: 'm1' }], 'u', '2026-11-05'), null);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

@@ -314,3 +314,9 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .cs-opt.dis { opacity: .45; cursor: not-allowed; }
 .cs-grp { padding: 8px 12px 4px; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .side .nav { min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; } .side .nav::-webkit-scrollbar { display: none; }
+
+/* aviso de salário sem contracheque, ao lado do seletor de mês */
+.top-alert { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 6px 12px; border-radius: 999px; border: 1.5px solid color-mix(in srgb, #f4a62a 60%, transparent); background: color-mix(in srgb, #f4a62a 16%, var(--surface)); color: var(--text); font-size: .8rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.top-alert[hidden] { display: none; } .top-alert.here { border-color: #f4a62a; box-shadow: 0 0 0 3px color-mix(in srgb, #f4a62a 22%, transparent); }
+.top-alert .ta-i { color: #d98a0a; }
+@media (max-width: 800px) { .top-alert .ta-t { display: none; } .top-alert { padding: 6px 10px; } }

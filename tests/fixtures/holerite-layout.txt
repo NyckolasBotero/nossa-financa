@@ -1,0 +1,72 @@
+                          00 - EMPRESA EXEMPLO DE
+                                                                                                                     RECIBO DE PAGAMENTO
+                          PRODUTOS LTDA
+                                                                                                                                    Competência: Outubro/2026
+                          00 , 000 - 1 - Cidade - UF
+                                                                                                                                                  Cálculo Mensal
+                          CNPJ: 00.000.000/0000-00
+
+IDENTIFICAÇÃO DO COLABORADOR
+
+NOME                                                                                 MATRÍCULA                              CPF
+
+
+NOME DO COLABORADOR                                                     00000000                               000.000.000-00
+ADMISSÃO                                   SITUAÇÃO ATUAL                            CARGO                                  DIVISÃO
+
+
+10/08/2026                                 Ativo                                     CARGO EXEMPLO                     DIVISAO EXEMPLO
+ESCALA                                     SALÁRIO ATUAL                             FILIAL
+
+
+                                           R$ 3.148,06                               FILIAL EXEMPLO
+VENCIMENTOS E DESCONTOS
+
+      EVENTO       DESCRIÇÃO                                                                     REFERÊNCIA              PROVENTOS                DESCONTOS
+
+       + 1         SALARIO                                                                            30,00               R$ 3.148,06
+       + 6         DESC SEMANAL REMUNERADO                                                             0,00                  R$ 90,10
+       + 13        FERIADO                                                                             8,13                 R$ 232,77
+       + 51        HORA EXTRA(DOMINGO)                                                                10,98                 R$ 235,75
+       + 71        ADICIONAL NOTURNO                                                                   8,13                  R$ 23,28
+      + 341        PREMIO (PRODUTIVIDADE)                                                              0,00                 R$ 757,86
+       - 74        INSS                                                                               12,00                                          R$ 298,40
+       - 81        ADIANTAMENTO DE SALÁRIO                                                             0,00                                          R$ 944,42
+       - 89        FALTAS                                                                              1,00                                          R$ 104,94
+       - 90        MENSALIDADE SINDICAL                                                                0,00                                            R$ 35,00
+       - 102       VALE REFEIÇÃO                                                                       0,20                                          R$ 105,00
+       - 219       DESCANSO SEMANAL PERDIDO                                                            2,00                                          R$ 209,87
+       - 53        DESC DE VALES OU ADIANTAMENTO                                                       0,00                                          R$ 104,03
+
+ TOTAL DE VENCIMENTOS                                      TOTAL DE DESCONTOS                                   LÍQUIDO A RECEBER
+
+ R$ 4.487,82                                               R$ 1.801,66                                          R$ 2.686,16
+BASES DE CÁLCULO
+
+SALÁRIO BASE                        BASE CÁLCULO INSS                 BASE CÁLCULO FGTS              BASE CÁLCULO IRRF                DEP. IRRF
+
+
+3.148,06                            3.415,15                          3.415,15                       4.173,01                         1
+
+                                          DECLARO TER RECEBIDO A IMPORTÂNCIA LIQUIDA DISCRIMINADA NESTE RECIBO
+
+ DATA PAGAMENTO
+
+
+ 05/11/2026
+
+ASSINATURA DIGITAL
+
+ DOCUMENTO ASSINADO DIGITALMENTE                                              ASSINATURA ELETRÔNICA
+ E-MAIL                                                                       DATA
+ email@exemplo.com                                                     19/11/2026 17:02 UTC -03:00
+ IP
+ 0.0.0.0
+ LOCALIZAÇÃO
+                                                                              CPF
+ Localizacao nao informada
+                                                                              000.000.000-00
+ HASH SHA-256
+ 00000000000000000000000000000000                                             ASSINADO POR
+ 00000000000000000000000000000000                                             NOME DO COLABORADOR
+

@@ -246,6 +246,20 @@ ok('parser de contracheque', () => {
   const bad = ctx.parsePayslipText_('Total de Vencimentos 3.000,00 Total de Descontos 500,00 Líquido a Receber 2.000,00');
   assert.ok(bad.warnings.some((w) => /não fecham/.test(w)));
 });
+ok('parser de contracheque real (anonimizado): layout em linhas e texto corrido do OCR', () => {
+  for (const f of ['holerite-layout.txt', 'holerite-raw.txt']) {
+    const txt = fs.readFileSync(path.resolve(import.meta.dirname, 'fixtures', f), 'utf8');
+    const r = ctx.parsePayslipText_(txt);
+    assert.equal(r.competence, '2026-10', f); assert.equal(r.payDate, '2026-11-05', f);
+    assert.equal(r.gross, 4487.82, f); assert.equal(r.discounts, 1801.66, f); assert.equal(r.net, 2686.16, f);
+    assert.equal(r.items.length, 13, f + ' itens: ' + r.items.map((i) => i.label).join(','));
+    assert.equal(r.items.filter((i) => i.kind === 'earning').length, 6, f); assert.equal(r.items.filter((i) => i.kind === 'discount').length, 7, f);
+    const soma = (k) => Math.round(r.items.filter((i) => i.kind === k).reduce((a, i) => a + i.value, 0) * 100) / 100;
+    assert.equal(soma('earning'), 4487.82, f); assert.equal(soma('discount'), 1801.66, f);
+    assert.ok(r.items.some((i) => i.label === 'PREMIO (PRODUTIVIDADE)' && i.value === 757.86), f);
+    assert.equal(r.warnings.length, 0, f + ' ' + r.warnings.join('|'));
+  }
+});
 ok('payslip.parse sem serviço Drive avisa em vez de gravar', () => {
   const r = call('payslip.parse', { name: 'c.pdf', mime: 'application/pdf', data: Buffer.from('x').toString('base64') }, meTok);
   assert.equal(r.error.code, 'OCR_UNAVAILABLE');

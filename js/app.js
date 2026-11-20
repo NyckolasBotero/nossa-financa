@@ -205,6 +205,7 @@ let lastUsers = '';
 store.subscribe(() => { const k = JSON.stringify(store.state.users) + store.prefs.who; if (k !== lastUsers) { lastUsers = k; paintScope(); } });
 
 onRoute((route) => {
+  if (route.id !== 'fixed') { const a = document.getElementById('top-alert'); if (a) a.hidden = true; }
   markActive(route);
   $('#page-title').textContent = route.label;
   show($('#month-nav'), !!route.month);

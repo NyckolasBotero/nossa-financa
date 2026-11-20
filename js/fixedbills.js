@@ -95,6 +95,20 @@ const STATUS = {
 };
 let tab = 'expense';
 
+/** Aviso ao lado do seletor de mês: meses em que o salário foi lançado à mão, sem contracheque. */
+function renderSalaryAlert(d, month) {
+  const el = document.getElementById('top-alert'); if (!el) return;
+  const list = P.salaryWithoutPayslip(d, store.state.payslips);
+  if (!list.length) { el.hidden = true; return; }
+  const here = list.find((x) => x.month === month), others = list.filter((x) => x.month !== month);
+  const names = (arr) => arr.map((x) => monthLabel(x.month).split(' ')[0]).join(', ');
+  const detail = list.map((x) => `${monthLabel(x.month)}: ${brl(x.total)} lançado à mão`).join(' · ');
+  el.innerHTML = `<span class="ta-i" aria-hidden="true">⚠</span><span class="ta-t">${here ? `${esc(monthLabel(month).split(' ')[0])} sem contracheque` : `${list.length} ${list.length === 1 ? 'mês' : 'meses'} sem contracheque`}${here && others.length ? ` · +${others.length}` : ''}</span>`;
+  el.title = `Salário lançado manualmente, sem contracheque. ${detail}. Clique para lançar o contracheque.`;
+  el.setAttribute('aria-label', el.title);
+  el.classList.toggle('here', !!here); el.hidden = false;
+  el.onclick = () => { location.hash = '#/payslips'; };
+}
 const money0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
 const m0 = (v) => `R$ ${money0.format(v)}`, n0 = (v) => money0.format(v);   // n0: sem símbolo, para a tabela
 /** Quadro do ano: o que sobrou/faltou, o acumulado e a previsão dos próximos 6 meses. */
@@ -133,6 +147,7 @@ export function render(view) {
   $$('#fx-tabs input', view).forEach((r) => { r.checked = r.value === kind; });
 
   renderOverview($('#fx-ov', view), d, today, month);
+  renderSalaryAlert(d, month);
   $('#fx-var-card', view).hidden = income;
   if (!income) renderVariableChart($('#fx-var', view));
   $('#fx-list', view).innerHTML = rows.length ? rows.map(({ bill, status, due, tx, lateDays, avg, avgCount }) => {

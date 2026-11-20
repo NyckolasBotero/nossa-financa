@@ -1028,7 +1028,7 @@ function ocrToText_(blob) {
     file = Drive.Files.insert({ title: 'tmp-ocr-' + uid_(), mimeType: blob.getContentType() }, blob, { ocr: true, ocrLanguage: 'pt' });
     return DocumentApp.openById(file.id).getBody().getText();
   } catch (e) {
-    throw fail_('OCR_FAILED', 'Não consegui ler o arquivo. Tente outro PDF ou uma foto mais nítida.');
+    throw fail_('OCR_FAILED', 'Não consegui ler o arquivo (' + String(e && e.message ? e.message : e).slice(0, 140) + '). Tente outro PDF ou uma foto mais nítida; se persistir, preencha à mão.');
   } finally {
     if (file && file.id) { try { Drive.Files.remove(file.id); } catch (e2) { /* ignore */ } }
   }
@@ -1045,17 +1045,21 @@ const PAYSLIP_LABELS_ = {
 
 function parsePayslipText_(text) {
   const lines = String(text || '').split(/\r?\n/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
-  const out = { competence: '', gross: null, discounts: null, net: null, items: [], warnings: [] };
+  const out = { competence: '', payDate: '', gross: null, discounts: null, net: null, items: [], warnings: [] };
   const moneyRe = /\d{1,3}(?:\.\d{3})*,\d{2}/;
 
-  // competência
+  // competência: "Competência: Outubro/2026", "Referência 10/2026" ou só "outubro de 2026"
   const flat = normalize_(lines.join(' \n '));
+  const monthRe = '(' + MONTHS_PT_.join('|') + ')';
   let c = /(?:competencia|referencia|mes\/ano|periodo)[^\d\n]{0,15}(\d{2})\s*[\/.-]\s*(\d{4})/.exec(flat);
   if (c) out.competence = c[2] + '-' + c[1];
   else {
-    c = new RegExp('(' + MONTHS_PT_.join('|') + ')\\s*(?:de|\\/)?\\s*(\\d{4})').exec(flat);
+    c = new RegExp('competencia\\W{0,4}' + monthRe + '\\s*(?:de|\\/|-)?\\s*(\\d{4})').exec(flat) || new RegExp(monthRe + '\\s*(?:de|\\/)?\\s*(\\d{4})').exec(flat);
     if (c) out.competence = c[2] + '-' + ('0' + (MONTHS_PT_.indexOf(c[1]) + 1)).slice(-2);
   }
+  // data do pagamento
+  const pd = /data (?:de )?pagamento\W{0,12}(\d{2})\/(\d{2})\/(\d{4})/.exec(flat);
+  if (pd) out.payDate = pd[3] + '-' + pd[2] + '-' + pd[1];
 
   // totais: primeiro valor depois do rótulo (mesma linha ou até 2 linhas abaixo)
   function findAfter(labelRe) {
@@ -1069,29 +1073,48 @@ function parsePayslipText_(text) {
     }
     return null;
   }
-  out.gross = findAfter(PAYSLIP_LABELS_.gross);
-  out.discounts = findAfter(PAYSLIP_LABELS_.discounts);
-  out.net = findAfter(PAYSLIP_LABELS_.net);
+  // cabeçalho com os três rótulos lado a lado e os valores na linha seguinte ("TOTAL DE VENCIMENTOS  TOTAL DE DESCONTOS  LÍQUIDO A RECEBER" / "R$ 4.487,82 R$ 1.801,66 R$ 2.686,16")
+  const heads = [];
+  for (let i = 0; i < lines.length && !heads.length; i++) {
+    const n = normalize_(lines[i]), pos = [['gross', PAYSLIP_LABELS_.gross], ['discounts', PAYSLIP_LABELS_.discounts], ['net', PAYSLIP_LABELS_.net]]
+      .map(function (x) { const m = x[1].exec(n); return m ? { key: x[0], at: m.index } : null; }).filter(Boolean);
+    if (pos.length >= 2 && !moneyRe.test(lines[i])) {
+      const vals = []; for (let k = 1; k <= 2 && i + k < lines.length && vals.length < pos.length; k++) (lines[i + k].match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || []).forEach(function (x) { vals.push(parseMoney_(x)); });
+      if (vals.length >= pos.length) { pos.sort(function (x, y) { return x.at - y.at; }).forEach(function (x, j) { out[x.key] = vals[j]; }); heads.push(1); }
+    }
+  }
+  if (out.gross === null) out.gross = findAfter(PAYSLIP_LABELS_.gross);
+  if (out.discounts === null) out.discounts = findAfter(PAYSLIP_LABELS_.discounts);
+  if (out.net === null) out.net = findAfter(PAYSLIP_LABELS_.net);
 
-  // itens (linhas de rubrica com um valor no fim)
-  const rowRe = /^(?:\d{1,5}\s+)?(.{3,45}?)\s+(?:\d{1,3}(?:[.,]\d{1,2})?\s*%?\s+)?(\d{1,3}(?:\.\d{3})*,\d{2})\s*([CD])?$/;
+  // itens
   const seen = {};
-  lines.forEach(function (ln) {
-    const n = normalize_(ln);
-    if (PAYSLIP_LABELS_.gross.test(n) || PAYSLIP_LABELS_.discounts.test(n) || PAYSLIP_LABELS_.net.test(n) || /^base|base de calculo|salario base|fgts mes/.test(n)) return;
-    const m = rowRe.exec(ln);
-    if (!m) return;
-    const label = m[1].replace(/\s+/g, ' ').trim();
-    if (!/[A-Za-zÀ-ú]{3}/.test(label)) return;
-    const value = parseMoney_(m[2]);
-    const ln2 = normalize_(label);
-    let kind = m[3] === 'D' ? 'discount' : 'earning';
-    if (/inss|irrf|\bir\b|imposto|desconto|plano|vale|contribuicao|previd|falta|adiantamento|consignado|sindical|coparticipacao/.test(ln2)) kind = 'discount';
-    if (/fgts/.test(ln2)) kind = 'info';
-    const key = ln2 + '|' + value;
-    if (seen[key]) return; seen[key] = 1;
-    out.items.push({ label: label, value: value, kind: kind });
-  });
+  const push = function (label, value, kind, ref) {
+    label = label.replace(/\s+/g, ' ').trim();
+    if (!/[A-Za-zÀ-ú]{3}/.test(label) || value === null) return;
+    const key = normalize_(label) + '|' + value; if (seen[key]) return; seen[key] = 1;
+    out.items.push({ label: label, value: value, kind: kind, ref: ref || '' });
+  };
+  // (a) formato "+ 1 SALARIO 30,00 R$ 3.148,06": o sinal (+/−) diz se é provento ou desconto; vale também com tudo em uma linha só
+  const signed = /([+\-−–])\s*(\d{1,4})\s+([A-Za-zÀ-ú][A-Za-zÀ-ú ()./%'\-]{1,58}?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s+R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})(?=\s|$)/g;
+  const all = lines.join(' ');
+  let sm;
+  while ((sm = signed.exec(all))) push(sm[3], parseMoney_(sm[5]), sm[1] === '+' ? 'earning' : 'discount', sm[4]);
+  // (b) formato clássico: linha com rubrica e um valor no fim (sem sinal)
+  if (!out.items.length) {
+    const rowRe = /^(?:\d{1,5}\s+)?(.{3,45}?)\s+(?:\d{1,3}(?:[.,]\d{1,2})?\s*%?\s+)?(\d{1,3}(?:\.\d{3})*,\d{2})\s*([CD])?$/;
+    lines.forEach(function (ln) {
+      const n = normalize_(ln);
+      if (PAYSLIP_LABELS_.gross.test(n) || PAYSLIP_LABELS_.discounts.test(n) || PAYSLIP_LABELS_.net.test(n) || /^base|base de calculo|salario base|salario atual|fgts mes/.test(n)) return;
+      const m = rowRe.exec(ln);
+      if (!m) return;
+      const label = m[1].replace(/\s+/g, ' ').trim(), ln2 = normalize_(label);
+      let kind = m[3] === 'D' ? 'discount' : 'earning';
+      if (/inss|irrf|\bir\b|imposto|desconto|plano|vale|contribuicao|previd|falta|adiantamento|consignado|sindical|coparticipacao/.test(ln2)) kind = 'discount';
+      if (/fgts/.test(ln2)) kind = 'info';
+      push(label, parseMoney_(m[2]), kind, '');
+    });
+  }
 
   // reconciliação
   const sum = function (k) { return Math.round(out.items.filter(function (i) { return i.kind === k; }).reduce(function (a, i) { return a + i.value; }, 0) * 100) / 100; };

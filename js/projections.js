@@ -467,3 +467,23 @@ export function salaryConflict(d, t, txs = d.transactions) {
   const k = salaryKey(d, t); if (k === null) return null;
   return txs.find((x) => !x.archived && x.id !== t.id && x.ownerId === t.ownerId && ym(x.date) === ym(t.date) && salaryKey(d, x) === k) || null;
 }
+
+/** Lançamento de entrada que representa salário: categoria de salário, vindo de contracheque ou ligado a uma receita fixa de salário. */
+export function isSalaryTx(d, t) {
+  if (t.type !== 'income' || t.archived) return false;
+  if (salaryKey(d, t) !== null) return true;
+  const b = t.fixedBillId ? d.fixedBills.find((x) => x.id === t.fixedBillId) : null;
+  return !!b && (ix(d).cat.get(b.categoryId)?.tag === 'salary' || /sal[aá]rio|contracheque|folha/i.test(b.name));
+}
+/** Salário lançado à mão (sem contracheque) no mesmo mês de `payDate`, da mesma pessoa: o contracheque passa a valer no lugar dele. */
+export function manualSalaryFor(d, payslips, ownerId, payDate, txs = d.transactions) {
+  const used = new Set(payslips.filter((p) => !p.archived && p.transactionId).map((p) => p.transactionId));
+  return txs.find((t) => !used.has(t.id) && t.origin !== 'payslip' && t.ownerId === ownerId && ym(t.date) === ym(payDate) && isSalaryTx(d, t)) || null;
+}
+/** Meses cujo salário foi lançado à mão, sem contracheque (aviso em Contas F.V). */
+export function salaryWithoutPayslip(d, payslips, txs = d.transactions) {
+  const used = new Set(payslips.filter((p) => !p.archived && p.transactionId).map((p) => p.transactionId));
+  const by = new Map();
+  for (const t of txs) if (!used.has(t.id) && t.origin !== 'payslip' && isSalaryTx(d, t)) by.set(ym(t.date), [...(by.get(ym(t.date)) || []), t]);
+  return [...by.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([month, list]) => ({ month, txs: list, total: round2(sum(list, (x) => x.amount)) }));
+}

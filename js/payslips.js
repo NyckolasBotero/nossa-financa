@@ -82,9 +82,10 @@ export function openPayslipEditor(ps = null, prefill = null) {
       const up = await prepareUpload(f);
       const r = await api.call('payslip.parse', up, { timeout: 90000, feedback: { start: 'Lendo o contracheque…', text: 'Pode levar alguns segundos', done: 'Contracheque lido: confira os valores' } });
       const p = r.result;
-      if (p.items?.length) { items = p.items.filter((i) => i.kind !== 'info').map((i) => ({ label: i.label, kind: i.kind, value: i.value, ref: '' })); netTouched = false; }
+      if (p.items?.length) { items = p.items.filter((i) => i.kind !== 'info').map((i) => ({ label: i.label, kind: i.kind, value: i.value, ref: i.ref || '' })); netTouched = false; }
       if (p.net != null) { g('ps-net').value = moneyInput(p.net); netTouched = true; }
-      if (p.competence && !refTouched) g('ps-ref').value = p.competence;
+      if (p.payDate) g('ps-pay').value = p.payDate;
+      if (p.competence) { g('ps-ref').value = p.competence; refTouched = true; }
       attachmentIds = [r.attachment.id]; drawItems(); refHint();
       if (p.warnings?.length) toast(p.warnings[0], { kind: 'warn' });
     } catch (ex) { toast(ex.message, { kind: 'err' }); }
@@ -109,13 +110,18 @@ export function openPayslipEditor(ps = null, prefill = null) {
       const fixedBillId = g('ps-fb')?.value || '';
       const txBase = { fixedBillId, amount: net, date: payDate, description: `Salário ${monthLabel(refMonth)}`, accountId, notes: `Competência ${refMonth} · Proventos ${brl(earn)} · Descontos ${brl(disc)}`.slice(0, 480), force: true };
       const salary = store.activeOf('categories').find((x) => x.type === 'income' && x.tag === 'salary');
-      let txId = ps?.transactionId || '';
+      let txId = ps?.transactionId || '', manual = null, replaced = null;
       if (launch && linkedTx) await store.update('transactions', { id: linkedTx.id, ...txBase });
+      else if (launch && (manual = P.manualSalaryFor(allD(), store.state.payslips, ownerId, payDate, store.state.transactions))) {
+        // havia um salário lançado à mão neste mês: o contracheque passa a valer no lugar dele
+        await store.update('transactions', { id: manual.id, ...txBase, categoryId: manual.categoryId || salary?.id || '', accountId: accountId || manual.accountId || '', fixedBillId: fixedBillId || manual.fixedBillId || '', origin: 'payslip', attachmentIds }, { silent: true, feedback: null });
+        txId = manual.id; replaced = manual;
+      }
       else if (launch) { const tx = await store.create('transactions', { type: 'income', ownerId, scope: 'individual', origin: 'payslip', categoryId: salary?.id || '', clientId, attachmentIds, ...txBase }); txId = tx.id; }
       else if (linkedTx) { await store.remove('transactions', linkedTx.id); txId = ''; }
       payload.transactionId = txId;
       if (editing) await store.update('payslips', { id: ps.id, ...payload }); else await store.create('payslips', payload);
-      toast(`Contracheque de ${monthLabel(refMonth)} salvo.`, { kind: 'ok' });
+      toast(replaced ? `Contracheque de ${monthLabel(refMonth)} salvo. O salário lançado à mão (${brl(replaced.amount)}) foi trocado pelo líquido do contracheque (${brl(net)}).` : `Contracheque de ${monthLabel(refMonth)} salvo.`, { kind: 'ok' });
       modal.close();
     } catch (ex) { err.textContent = ex.message; err.hidden = false; err.scrollIntoView({ block: 'nearest' }); }
     finally { btn.disabled = false; }
@@ -125,6 +131,7 @@ export function openPayslipEditor(ps = null, prefill = null) {
 }
 /** Ligação automática: contracheques já lançados cujo salário não consta como recebido em Receitas fixas. */
 const tried = new Set();
+const allD = () => ({ categories: store.state.categories, cards: store.state.cards, fixedBills: store.state.fixedBills, transactions: store.state.transactions });
 export async function autoLinkPayslips() {
   const d = store.data();
   const incomes = store.activeOf('fixedBills').filter((b) => P.billKind(b) === 'income');
