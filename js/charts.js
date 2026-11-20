@@ -69,7 +69,7 @@ export function areaChart({ points, height = 200, color = 'var(--brand)', label 
 
 /** Várias linhas (uma por série) com pontos; valores nulos viram lacunas. series: [{ name, color, values[] }] */
 export function lineChart({ labels, series, height = 230, label = 'Gráfico de linhas', avg = true }) {
-  const W = 600, H = height, L = 52, R = 14, T = 12, B = 28, iw = W - L - R, ih = H - T - B;
+  const W = 600, H = height, L = 66, R = 14, T = 12, B = 28, iw = W - L - R, ih = H - T - B;
   const max = niceMax(Math.max(1, ...series.flatMap((x) => x.values.filter((v) => v != null))));
   const x = (i) => L + (iw * i) / Math.max(1, labels.length - 1), y = (v) => T + ih - (v / max) * ih;
   let g = '';

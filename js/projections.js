@@ -431,3 +431,37 @@ export function pantryInfo(items, people, today) {
 // ------------------------------------------------------------------ contracheque
 /** Pagamento do salário cai no mês seguinte ao de referência (ex.: 05/10 refere-se a setembro). */
 export const refMonthOf = (payDate) => addMonths(ym(payDate), -1);
+
+/**
+ * Resumo do ano e dos próximos meses (uma linha por mês, de janeiro até hoje + `ahead`).
+ * Meses passados = o que aconteceu; mês atual = o que já foi + o que falta; futuros = previsão
+ * (contas fixas, estimativa das variáveis, receitas fixas e gasto variável médio). Acumulado = soma das sobras desde janeiro.
+ */
+export function yearOverview(d, today, ahead = 6, txs = d.transactions) {
+  const cur = ym(today), y = cur.slice(0, 4), rows = [];
+  const fixedOf = (m) => round2(sum(billsForMonth(d, m, today, 'expense'), (x) => x.bill.amount));
+  for (let m = `${y}-01`; m < cur; m = addMonths(m, 1)) {
+    const tot = monthTotals(d, m, txs);
+    const fx = round2(sum(txs.filter((t) => t.type === 'expense' && t.fixedBillId && ym(t.date) === m && !isFood(d, t)), (t) => t.amount));
+    rows.push({ month: m, state: 'past', income: tot.income, fixed: fx, variable: round2(Math.max(0, tot.expense - fx)), leftover: tot.result });
+  }
+  const o = outlook(d, today, ahead, txs);
+  o.forEach((r, i) => {
+    const fixed = i === 0 ? fixedOf(cur) : fixedOf(r.month);
+    rows.push({ month: r.month, state: i === 0 ? 'current' : 'future', income: r.income, fixed, variable: round2(Math.max(0, r.expense - fixed)), leftover: r.leftover, lowConfidence: r.lowConfidence });
+  });
+  let acc = 0; for (const r of rows) { acc = round2(acc + r.leftover); r.cumulative = acc; }
+  return rows;
+}
+
+/** Chave que identifica "este tipo de salário" de um lançamento (categoria de salário ou contracheque); null se não é salário. */
+export function salaryKey(d, t) {
+  if (t.type !== 'income') return null;
+  const c = ix(d).cat.get(t.categoryId);
+  return (c?.tag === 'salary' || t.origin === 'payslip') ? (t.categoryId || '') : null;
+}
+/** Outro lançamento de salário da mesma pessoa, do mesmo tipo (categoria), no mesmo mês. Pessoas diferentes ou categorias diferentes podem. */
+export function salaryConflict(d, t, txs = d.transactions) {
+  const k = salaryKey(d, t); if (k === null) return null;
+  return txs.find((x) => !x.archived && x.id !== t.id && x.ownerId === t.ownerId && ym(x.date) === ym(t.date) && salaryKey(d, x) === k) || null;
+}

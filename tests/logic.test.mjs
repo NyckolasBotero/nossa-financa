@@ -262,6 +262,23 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.equal(P.pantryUnits(items[0]), 11); assert.equal(r.rows[0].days, 11); assert.equal(r.rows[0].status, 'soon'); assert.equal(r.rows[0].expiresIn, 12);
     assert.equal(r.rows[1].status, 'expired'); assert.equal(r.avgDays, 11); assert.equal(r.expired, 1); assert.equal(r.soon, 1); assert.equal(r.first.it.name, 'Arroz');
   });
+  ok('resumo do ano: passado real, mês atual e 6 previstos com acumulado', () => {
+    const r = P.yearOverview(d, TODAY, 6);
+    assert.equal(r[0].month, '2026-01'); assert.equal(r.at(-1).month, '2027-05');
+    assert.equal(r.filter((x) => x.state === 'current').length, 1); assert.equal(r.filter((x) => x.state === 'future').length, 6);
+    let acc = 0; for (const x of r) { acc = Math.round((acc + x.leftover) * 100) / 100; assert.equal(x.cumulative, acc); }
+  });
+  ok('salário em dobro: mesma pessoa, categoria e mês conflita; outra categoria ou pessoa não', () => {
+    const cats = [{ id: 'cs', type: 'income', tag: 'salary' }, { id: 'cm', type: 'income', tag: 'other' }];
+    const t = (id, o) => ({ id, type: 'income', amount: 100, date: '2026-11-05', ownerId: 'u', categoryId: 'cs', ...o });
+    const dd = { ...d, categories: cats, _ix: undefined };
+    const base = [t('a')];
+    assert.ok(P.salaryConflict(dd, t('b'), base));
+    assert.equal(P.salaryConflict(dd, t('a'), base), null);
+    assert.equal(P.salaryConflict(dd, t('b', { categoryId: 'cm' }), base), null);
+    assert.equal(P.salaryConflict(dd, t('b', { ownerId: 'w' }), base), null);
+    assert.equal(P.salaryConflict(dd, t('b', { date: '2026-12-05' }), base), null);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

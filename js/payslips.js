@@ -100,7 +100,7 @@ export function openPayslipEditor(ps = null, prefill = null) {
       const clean = items.filter((i) => (i.label || '').trim() || Number(i.value)).map((i) => ({ label: String(i.label || '').trim().slice(0, 60), kind: i.kind, value: Number(i.value) || 0, ref: String(i.ref || '').trim() }));
       const ownerId = g('ps-owner').value, refMonth = g('ps-ref').value, payDate = g('ps-pay').value;
       const dup = store.activeOf('payslips').find((x) => x.ownerId === ownerId && x.refMonth === refMonth && x.id !== ps?.id);
-      if (dup && !(await confirmDialog({ title: 'Já existe contracheque deste mês', text: `Já há um contracheque de ${monthLabel(refMonth)} para ${store.userName(ownerId)}. Salvar mesmo assim?`, okLabel: 'Salvar mesmo assim' }))) return;
+      if (dup) throw new Error(`${store.userName(ownerId)} já tem o contracheque de ${monthLabel(refMonth)}. Edite o que existe. Para 13º, férias ou outra empresa, lance pelo extrato numa categoria própria (ex.: "Salário MEI").`);
       btn.disabled = true;
       const earn = sumKind(clean, 'earning'), disc = sumKind(clean, 'discount');
       const accountId = g('ps-acc')?.value || '', launch = !!g('ps-launch')?.checked && !!accountId;

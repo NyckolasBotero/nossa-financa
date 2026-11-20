@@ -4,7 +4,7 @@
  * atualiza o estado local com o registro devolvido pelo servidor (a planilha é a fonte da verdade).
  */
 import * as api from './api.js';
-import { scoped } from './projections.js';
+import { scoped, salaryConflict } from './projections.js';
 import { currentMonth, todayISO } from './format.js';
 
 export const state = {
@@ -97,11 +97,26 @@ function fb(kind, verb, p = {}) {
   return { start: `Arquivando ${low}…`, done: `${cap} ${ar}` };
 }
 
+/** Salário em dobro: mesma pessoa, mesmo tipo (categoria) e mesmo mês. Outra categoria (13º, Salário MEI...) ou outra pessoa pode. */
+function guardSalary(rec, oldRec) {
+  if (rec.type !== 'income') return;
+  if (oldRec && oldRec.date === rec.date && oldRec.categoryId === rec.categoryId && oldRec.ownerId === rec.ownerId && oldRec.type === rec.type) return;   // só liga/edita outros campos
+  const d = { categories: state.categories, transactions: state.transactions, cards: [], accounts: [], fixedBills: [], goals: [] };
+  const dup = salaryConflict(d, rec, state.transactions);
+  if (!dup) return;
+  const cat = state.categories.find((c) => c.id === rec.categoryId);
+  const who = (state.users.find((u) => u.id === rec.ownerId) || {}).name || 'esta pessoa';
+  throw new Error(`${who} já tem um salário de ${monthLabelOf(rec.date)} em "${cat ? cat.name : 'Salário'}" (${BRL.format(dup.amount)}). Para outro vínculo (13º, férias, outra empresa), use outra categoria, por exemplo "Salário MEI".`);
+}
+const monthLabelOf = (date) => { const [y, m] = date.slice(0, 7).split('-'); return `${['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][Number(m) - 1]} de ${y}`; };
+
 export async function create(kind, payload, opts) {
+  if (kind === 'transactions') guardSalary(payload);
   const rec = clean(await api.call(`${KIND[kind]}.create`, payload, { retries: payload.clientId ? 1 : 0, feedback: fb(kind, 'create', payload), ...opts }));
   upsert(kind, rec); emit(); return rec;
 }
 export async function update(kind, payload, opts) {
+  if (kind === 'transactions') { const old = state.transactions.find((x) => x.id === payload.id); if (old) guardSalary({ ...old, ...payload }, old); }
   const rec = clean(await api.call(`${KIND[kind]}.update`, payload, { feedback: fb(kind, 'update', payload), ...opts }));
   upsert(kind, rec); emit(); return rec;
 }

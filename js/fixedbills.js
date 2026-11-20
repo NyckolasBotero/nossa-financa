@@ -4,7 +4,7 @@
  */
 import * as store from './store.js';
 import * as P from './projections.js';
-import { $, $$, esc, drop, pill, emptyState, formModal, confirmDialog, toast, brl, fmtDate, monthLabel } from './ui.js';
+import { $, $$, esc, drop, monthShort, pill, emptyState, formModal, confirmDialog, toast, brl, fmtDate, monthLabel } from './ui.js';
 import { openTxModal, askMethod } from './transactions.js';
 import { askCategory } from './categories.js';
 import { renderVariableChart } from './varchart.js';
@@ -85,6 +85,29 @@ const STATUS = {
 };
 let tab = 'expense';
 
+const money0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+const m0 = (v) => `R$ ${money0.format(v)}`, n0 = (v) => money0.format(v);   // n0: sem símbolo, para a tabela
+/** Quadro do ano: o que sobrou/faltou, o acumulado e a previsão dos próximos 6 meses. */
+function renderOverview(el, d, today, month) {
+  const all = P.yearOverview(d, today, 6), rows = all.filter((r) => r.state !== 'past' || r.income || r.fixed || r.variable), cur = rows.find((r) => r.state === 'current'), prev = [...rows].reverse().find((r) => r.state === 'past');
+  const tone = (v) => (v < 0 ? 'neg' : v > 0 ? 'pos' : '');
+  const sg = (v) => `${v < 0 ? '−' : v > 0 ? '+' : ''}${m0(Math.abs(v))}`, sn = (v) => `${v < 0 ? '−' : v > 0 ? '+' : ''}${n0(Math.abs(v))}`;
+  const lab = (m) => `${monthShort(m)}${m.slice(2, 4) !== today.slice(2, 4) ? `/${m.slice(2, 4)}` : ''}`;
+  const sum = (k, f) => rows.filter(f).reduce((s, r) => s + r[k], 0);
+  const futures = rows.filter((r) => r.state === 'future'), last = rows[rows.length - 1];
+  el.innerHTML = `<header class="card-h"><h3>Resumo do ano e próximos meses</h3><span class="muted small">valores em R$</span></header>
+    <div class="ov-kpis">
+      <div><span class="muted small">${prev ? `Mês passado (${lab(prev.month)})` : 'Mês passado'}</span><b class="${prev ? tone(prev.leftover) : ''}">${prev ? `${prev.leftover < 0 ? 'Faltou ' : 'Sobrou '}${m0(Math.abs(prev.leftover))}` : '—'}</b></div>
+      <div><span class="muted small">Acumulado até o mês passado</span><b class="${prev ? tone(prev.cumulative) : ''}">${prev ? sg(prev.cumulative) : '—'}</b></div>
+      <div><span class="muted small">Fecha ${esc(monthShort(today.slice(0, 7)))} em</span><b class="${cur ? tone(cur.cumulative) : ''}">${cur ? sg(cur.cumulative) : '—'}</b></div>
+      <div><span class="muted small">Em ${esc(lab(last.month))}, acumulado</span><b class="${tone(last.cumulative)}">${sg(last.cumulative)}</b></div>
+    </div>
+    <div class="ov-scroll"><table class="ov-t"><thead><tr><th>Mês</th><th>Receitas</th><th>Contas</th><th>Variável</th><th>Sobra</th><th>Acum.</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr class="${r.state}${r.month === month ? ' sel' : ''}"><th scope="row">${esc(lab(r.month))}${r.state === 'future' ? '<i title="Previsão">~</i>' : r.state === 'current' ? '<i title="Mês atual (parte já aconteceu)">•</i>' : ''}</th><td>${n0(r.income)}</td><td>${n0(r.fixed)}</td><td>${n0(r.variable)}</td><td class="${tone(r.leftover)}">${sn(r.leftover)}</td><td class="${tone(r.cumulative)}"><b>${sn(r.cumulative)}</b></td></tr>`).join('')}
+    </tbody><tfoot><tr><th>Próx. ${futures.length}</th><td>${n0(sum('income', (r) => r.state === 'future'))}</td><td>${n0(sum('fixed', (r) => r.state === 'future'))}</td><td>${n0(sum('variable', (r) => r.state === 'future'))}</td><td class="${tone(sum('leftover', (r) => r.state === 'future'))}">${sn(sum('leftover', (r) => r.state === 'future'))}</td><td></td></tr></tfoot></table></div>
+    <p class="muted small">Passado = o que aconteceu. <b>~</b> = previsão (receitas e contas fixas cadastradas, média das variáveis e gasto variável médio). <b>•</b> = mês atual. Acumulado = soma das sobras desde janeiro.</p>`;
+}
+
 export function render(view) {
   import("./payslips.js").then((m) => m.autoLinkPayslips()).catch(() => {});
   const d = store.data(), today = store.today(), month = store.prefs.month, kind = tab, income = kind === 'income', t = T[kind];
@@ -99,6 +122,7 @@ export function render(view) {
   $('#fx-new', view).textContent = t.new;
   $$('#fx-tabs input', view).forEach((r) => { r.checked = r.value === kind; });
 
+  renderOverview($('#fx-ov', view), d, today, month);
   $('#fx-var-card', view).hidden = income;
   if (!income) renderVariableChart($('#fx-var', view));
   $('#fx-list', view).innerHTML = rows.length ? rows.map(({ bill, status, due, tx, lateDays, avg, avgCount }) => {
