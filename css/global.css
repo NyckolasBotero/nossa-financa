@@ -6,7 +6,7 @@
   --income: #1fb58a; --expense: #f2677a; --warn: #f4a62a; --info: #5d8df6; --violet: #8b7cf6; --sky: #4ab3e8; --amber: #f4a62a; --ok: #1fb58a; --bad: #f2677a;
   --r-l: 26px; --r-m: 18px; --r-s: 12px; --shadow: 0 10px 30px rgba(21, 50, 74, .08); --shadow-s: 0 4px 14px rgba(21, 50, 74, .08);
   --font-d: 'Baloo 2', 'Nunito', system-ui, sans-serif; --font-b: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --side-c: 78px; --side-o: 252px; --ease: cubic-bezier(.2, .9, .25, 1); --pop: cubic-bezier(.2, 1.25, .35, 1);
+  --side-c: 78px; --side-o: 272px; --ease: cubic-bezier(.2, .9, .25, 1); --pop: cubic-bezier(.2, 1.25, .35, 1);
   --logo-1: #2d9cdb; --logo-2: #f2677a; --logo-3: #1fb58a; --logo-4: #f4a62a;
   --orb-1: #7cc9f4; --orb-2: #b9a8ff; --orb-3: #7de3c8; --orb-op: .5; --glass: rgba(255, 255, 255, .55); --glass-line: rgba(255, 255, 255, .7);
   --wave-1: rgba(45, 156, 219, .18); --wave-2: rgba(63, 208, 176, .2); --wave-3: rgba(244, 166, 42, .14); --wave-speed: 1;

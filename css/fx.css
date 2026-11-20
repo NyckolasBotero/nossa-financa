@@ -297,7 +297,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 
 /* menu: interruptor "abrir ao passar o mouse" e seta esmaecida quando o mouse manda */
 .side-toggle.dim { opacity: .45; }
-#hover-side { width: 100%; }
+#hover-side { width: 100%; gap: 10px; padding: 0 10px 0 14px; font-size: .92rem; } #hover-side .nav-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #hover-side .sw { margin-left: auto; flex: none; position: relative; width: 34px; height: 20px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 35%, transparent); transition: background .25s, opacity .2s; opacity: 0; }
 .side.open #hover-side .sw { opacity: 1; }
 #hover-side .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: transform .25s var(--pop); }
