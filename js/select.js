@@ -87,3 +87,27 @@ function enhance(sel) {
 const scan = (root) => { if (root.nodeType !== 1) return; if (root.tagName === 'SELECT') enhance(root); root.querySelectorAll?.('select').forEach(enhance); };
 scan(document.body);
 new MutationObserver((ms) => { for (const m of ms) m.addedNodes.forEach(scan); }).observe(document.body, { childList: true, subtree: true });
+
+/** Sugestões ao digitar/focar num campo de texto (lista arredondada igual à dos selects). `getItems()` -> [{ label, ...}]; `onPick(item)` ao escolher. */
+export function attachSuggest(input, getItems, onPick) {
+  let pop = null, act = -1, items = [];
+  const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const close = () => { pop?.remove(); pop = null; act = -1; };
+  const mark = (i) => { pop?.children[act]?.classList.remove('act'); act = i; pop?.children[act]?.classList.add('act'); pop?.children[act]?.scrollIntoView({ block: 'nearest' }); };
+  const pick = (it) => { input.value = it.label; close(); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); onPick?.(it); };
+  const show = () => {
+    const q = norm(input.value.trim());
+    items = getItems().filter((it) => norm(it.label) !== q && (!q || norm(it.label).includes(q))).sort((a, b) => (norm(b.label).startsWith(q) ? 1 : 0) - (norm(a.label).startsWith(q) ? 1 : 0)).slice(0, 8);
+    if (!items.length) return close();
+    if (!pop) { pop = document.createElement('div'); pop.className = 'cs-pop'; pop.setAttribute('role', 'listbox'); document.body.append(pop); }
+    pop.innerHTML = ''; items.forEach((it, i) => { const el = document.createElement('div'); el.className = 'cs-opt'; el.setAttribute('role', 'option'); el.textContent = it.label; el.addEventListener('pointerdown', (e) => { e.preventDefault(); pick(it); }); el.addEventListener('mousemove', () => mark(i)); pop.append(el); });
+    const r = input.getBoundingClientRect(); pop.style.left = `${r.left}px`; pop.style.minWidth = `${r.width}px`; pop.style.top = `${r.bottom + 6}px`; pop.style.maxHeight = '260px'; act = -1;
+  };
+  input.setAttribute('autocomplete', 'off');
+  input.addEventListener('focus', show); input.addEventListener('input', show); input.addEventListener('blur', () => setTimeout(close, 120));
+  input.addEventListener('keydown', (e) => {
+    if (!pop) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); mark(Math.min(items.length - 1, act + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); mark(Math.max(0, act - 1)); }
+    else if (e.key === 'Enter' && act >= 0) { e.preventDefault(); e.stopPropagation(); pick(items[act]); } else if (e.key === 'Escape') { e.stopPropagation(); close(); }
+  });
+}

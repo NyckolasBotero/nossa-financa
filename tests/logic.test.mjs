@@ -279,6 +279,14 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.equal(P.salaryConflict(dd, t('b', { ownerId: 'w' }), base), null);
     assert.equal(P.salaryConflict(dd, t('b', { date: '2026-12-05' }), base), null);
   });
+  ok('conta de outubro paga em novembro conta como paga em outubro (refMonth), mas o gasto cai em novembro', () => {
+    const b = { id: 'lz', name: 'Luz', kind: 'expense', amount: 200, dueDay: 10, startMonth: '2026-10', endMonth: '2026-10', archived: false };
+    const tx = { id: 'p', type: 'expense', amount: 210, date: '2026-11-05', refMonth: '2026-10', fixedBillId: 'lz', ownerId: 'u', accountId: 'a', createdAt: '2026-11-05' };
+    const dd = { ...d, fixedBills: [b], transactions: [tx] };
+    assert.equal(P.billStatus(dd, b, '2026-10', '2026-11-19').status, 'paid');
+    assert.equal(P.billApplies(b, '2026-11'), false);
+    assert.equal(P.monthTotals(dd, '2026-11', dd.transactions).expense, 210);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

@@ -2,6 +2,7 @@
  * ui.js — componentes reutilizáveis: ícones, modais, formulários, toasts, upload de anexos.
  * Todas as telas montam seus formulários com formModal() para manter o mesmo comportamento.
  */
+import { attachSuggest } from './select.js';
 import { esc, parseMoney, moneyInput } from './format.js';
 import * as notify from './notify.js';
 export * from './format.js';
@@ -97,10 +98,10 @@ export function openModal({ title, body = '', wide = false, onClose }) {
   return api;
 }
 
-export function confirmDialog({ title = 'Confirmar', text = '', okLabel = 'Confirmar', danger = false }) {
+export function confirmDialog({ title = 'Confirmar', text = '', okLabel = 'Confirmar', cancelLabel = 'Cancelar', danger = false }) {
   return new Promise((resolve) => {
     let answered = false;
-    const m = openModal({ title, body: `<p class="confirm-text">${esc(text)}</p><div class="modal-f"><button class="btn btn-ghost" data-no>Cancelar</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-ok>${esc(okLabel)}</button></div>`, onClose: () => { if (!answered) resolve(false); } });
+    const m = openModal({ title, body: `<p class="confirm-text">${esc(text)}</p><div class="modal-f"><button class="btn btn-ghost" data-no>${esc(cancelLabel)}</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-ok>${esc(okLabel)}</button></div>`, onClose: () => { if (!answered) resolve(false); } });
     $('[data-no]', m.root).addEventListener('click', () => m.close());
     $('[data-ok]', m.root).addEventListener('click', () => { answered = true; resolve(true); m.close(); });
   });
@@ -182,6 +183,8 @@ export function formModal({ title, fields, values = {}, submitLabel = 'Salvar', 
     files: (name) => picked[name] || [],
     close: () => modal.close()
   };
+
+  for (const f of fields) if (f.suggest) attachSuggest(byName(f.name), f.suggest, (it) => f.onPick?.(it, ctl));
 
   function readField(f) {
     const el = byName(f.name);

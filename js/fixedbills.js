@@ -22,10 +22,14 @@ export function openBillModal(bill = null, kindArg = 'expense') {
   const sources = store.sourceOptions({ type: kind });
   return formModal({
     title: editing ? t.edit : t.new, submitLabel: editing ? 'Salvar' : t.create,
-    values: bill ? { ...bill, billType: bill.billType || 'fixed', source: bill.accountId ? `a:${bill.accountId}` : bill.cardId ? `c:${bill.cardId}` : '' }
-      : { ownerId: store.prefs.who !== 'family' ? store.prefs.who : store.state.me.id, scope: kind === 'income' ? 'individual' : 'shared', billType: 'fixed', startMonth: store.prefs.month },
+    values: bill ? { ...bill, billType: bill.billType || 'fixed', repeat: bill.startMonth && bill.startMonth === bill.endMonth ? 'once' : 'monthly', refOnce: bill.startMonth || store.prefs.month, source: bill.accountId ? `a:${bill.accountId}` : bill.cardId ? `c:${bill.cardId}` : '' }
+      : { ownerId: store.prefs.who !== 'family' ? store.prefs.who : store.state.me.id, scope: kind === 'income' ? 'individual' : 'shared', billType: 'fixed', repeat: 'monthly', startMonth: store.prefs.month, refOnce: store.prefs.month },
     fields: [
-      { name: 'name', label: 'Nome', required: true, full: true, placeholder: t.ph },
+      { name: 'name', label: 'Nome', required: true, full: true, placeholder: t.ph, suggest: () => [...new Map(store.state.fixedBills.filter((x) => P.billKind(x) === kind).sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0)).map((x) => [P.norm(x.name), { label: x.name, bill: x }])).values()],
+        onPick: (it, c) => { const b = it.bill, v = c.values(), fillIf = (n, val, empty) => { if (val && empty) c.set(n, val); };
+          fillIf('categoryId', b.categoryId, !v.categoryId); fillIf('source', b.accountId ? `a:${b.accountId}` : b.cardId ? `c:${b.cardId}` : '', !v.source); fillIf('method', b.method, !v.method);
+          fillIf('amount', b.amount, !v.amount); fillIf('dueDay', b.dueDay, !v.dueDay); if (kind === 'expense' && b.billType) c.set('billType', b.billType); } },
+      { name: 'repeat', label: 'Essa conta', type: 'segmented', full: true, options: [{ value: 'monthly', label: 'Repete todo mês' }, { value: 'once', label: 'Só uma vez (avulsa)' }] },
       ...(kind === 'expense' ? [{ name: 'billType', label: 'Essa conta é', type: 'segmented', full: true, options: [{ value: 'fixed', label: 'Fixa (sempre igual)' }, { value: 'variable', label: 'Variável (muda todo mês)' }] }] : []),
       { name: 'amount', label: kind === 'expense' ? 'Valor (estimado, se variável)' : 'Valor', type: 'money', required: true },
       { name: 'dueDay', label: t.day, type: 'number', min: 1, max: 31, required: true },
@@ -34,8 +38,9 @@ export function openBillModal(bill = null, kindArg = 'expense') {
       { name: 'method', label: t.method, type: 'select', options: store.methodOptions(), placeholder: 'Não informar' },
       { name: 'ownerId', label: t.owner, type: 'select', options: store.ownerOptions(), required: true },
       { name: 'scope', label: kind === 'income' ? 'Tipo de receita' : 'Tipo de gasto', type: 'segmented', options: [{ value: 'individual', label: 'Individual' }, { value: 'shared', label: 'Compartilhado' }] },
-      { name: 'startMonth', label: 'Vale a partir de', type: 'month', hint: t.hint },
-      { name: 'endMonth', label: 'Vale até', type: 'month', hint: 'Deixe vazio se não tem fim.' }
+      { name: 'startMonth', label: 'Vale a partir de', type: 'month', hint: t.hint, showIf: (v) => v.repeat !== 'once' },
+      { name: 'endMonth', label: 'Vale até', type: 'month', hint: 'Deixe vazio se não tem fim.', showIf: (v) => v.repeat !== 'once' },
+      { name: 'refOnce', label: 'Mês a que a conta se refere', type: 'month', required: true, hint: 'Ex.: a luz de outubro. Depois use Pagar na data em que realmente pagar; o gasto cai no mês do pagamento.', showIf: (v) => v.repeat === 'once' }
     ],
     onChange: async (name, c) => {
       if (name === 'categoryId' && c.values().categoryId === store.NEW_CAT) {
@@ -51,10 +56,14 @@ export function openBillModal(bill = null, kindArg = 'expense') {
     },
     onSubmit: async (v, c) => {
       const [k, id] = (v.source || ':').split(':');
-      const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.startMonth || '', endMonth: v.endMonth || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
+      const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.repeat === 'once' ? v.refOnce || '' : v.startMonth || '', endMonth: v.repeat === 'once' ? v.refOnce || '' : v.endMonth || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
       const rec = editing ? await store.update('fixedBills', { id: bill.id, ...payload }) : await store.create('fixedBills', payload);
       toast(t.saved, { kind: 'ok' }); c.close();
-      if (payload.billType === 'variable') await linkHistory(rec, { quiet: false });
+      if (payload.billType === 'variable' && v.repeat !== 'once') await linkHistory(rec, { quiet: false });
+      if (!editing && v.repeat === 'once') {
+        store.setMonth?.(payload.startMonth);
+        if (await confirmDialog({ title: 'Essa conta já foi paga?', text: `"${rec.name}" de ${monthLabel(payload.startMonth)}. Registre o pagamento agora, na data em que pagou; o gasto entra no mês do pagamento.`, okLabel: kind === 'income' ? 'Registrar recebimento' : 'Registrar pagamento', cancelLabel: 'Ainda não' })) payBill(rec, payload.startMonth);
+      }
     }
   });
 }
@@ -73,9 +82,9 @@ async function linkHistory(rec, { quiet = false } = {}) {
   catch (e) { nt.fail('Não consegui ligar tudo', e.message); }
 }
 
-export function payBill(bill) {   // para conta variável, `bill.amount` já vem com a média dos meses anteriores
+export function payBill(bill, month = '') {   // para conta variável, `bill.amount` já vem com a média dos meses anteriores
   const kind = P.billKind(bill);
-  return openTxModal({ type: kind, amount: bill.amount, date: store.today(), description: bill.name, categoryId: bill.categoryId, accountId: bill.accountId, cardId: bill.cardId, ownerId: bill.ownerId, scope: bill.scope, fixedBillId: bill.id, method: bill.method || '', origin: 'fixed' },
+  return openTxModal({ type: kind, amount: bill.amount, date: store.today(), description: bill.name, categoryId: bill.categoryId, accountId: bill.accountId, cardId: bill.cardId, ownerId: bill.ownerId, scope: bill.scope, fixedBillId: bill.id, method: bill.method || '', origin: 'fixed', refMonth: month || '' },
     { title: `${T[kind].act} · ${bill.name}${P.isVariable(bill) ? ' (confira o valor deste mês)' : ''}` });
 }
 
@@ -145,7 +154,7 @@ export function render(view) {
     if (e.target.closest('[data-new]')) return openBillModal(null, kind);
     if (g('link')) return linkHistory(store.byId('fixedBills', g('link')));
     if (g('editpay')) { const x = store.byId('transactions', g('editpay')); return x && (await import('./transactions.js')).openTxModal(x); }
-    if (g('pay')) return payBill(rows.find((r) => r.bill.id === g('pay')).bill);
+    if (g('pay')) return payBill(rows.find((r) => r.bill.id === g('pay')).bill, month);
     if (g('edit')) return openBillModal(store.byId('fixedBills', g('edit')));
     if (g('arch')) {
       const b = store.byId('fixedBills', g('arch'));

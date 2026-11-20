@@ -120,6 +120,8 @@ export function creditUsed(d, card) {
 }
 
 // ------------------------------------------------------------------ contas fixas
+/** Mês a que o lançamento se refere: o informado ao pagar (ex.: conta de outubro paga em novembro) ou o mês da data. */
+export const compMonth = (t) => (t.refMonth && t.type !== 'card_payment' ? t.refMonth : ym(t.date));
 const billFrom = (b) => b.startMonth || ym(b.createdAt || '0000-01');
 export const billApplies = (b, m) => !b.archived && billFrom(b) <= m && (!b.endMonth || b.endMonth >= m);
 
@@ -127,7 +129,7 @@ export const billApplies = (b, m) => !b.archived && billFrom(b) <= m && (!b.endM
 export const billKind = (b) => (b.kind === 'income' ? 'income' : 'expense');
 
 export function billStatus(d, b, month, today) {
-  const paidTx = all(d).find((t) => matchesBill(t, b) && t.type === billKind(b) && ym(t.date) === month);
+  const paidTx = all(d).find((t) => matchesBill(t, b) && t.type === billKind(b) && compMonth(t) === month);
   const due = dueDate(month, b.dueDay);
   if (paidTx) return { status: 'paid', due, tx: paidTx, lateDays: Math.max(0, diffDays(due, paidTx.date)) };
   const late = today > due;
@@ -143,7 +145,7 @@ export function matchesBill(t, b) {
 /** Conta variável: o valor muda todo mês (água, luz). O previsto é a média dos meses pagos. */
 export const isVariable = (b) => billKind(b) === 'expense' && b.billType === 'variable';
 export function billPaid(d, b, m) {
-  const v = all(d).filter((t) => matchesBill(t, b) && t.type === billKind(b) && ym(t.date) === m);
+  const v = all(d).filter((t) => matchesBill(t, b) && t.type === billKind(b) && compMonth(t) === m);
   return v.length ? round2(sum(v, (t) => t.amount)) : null;
 }
 export function billAverage(d, b, month, n = 6) {

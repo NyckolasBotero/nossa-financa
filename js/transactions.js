@@ -225,7 +225,7 @@ export function openTxModal(initial = {}, opts = {}) {
       else {
         const [kind, id] = (v.source || ':').split(':');
         payload = { type: v.type, amount: v.amount, date: v.date, description: v.description, merchant: initial.merchant || '', categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '',
-          accountId: kind === 'a' ? id : '', cardId: kind === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, fixedBillId: v.fixedBillId || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', notes: v.notes };
+          accountId: kind === 'a' ? id : '', cardId: kind === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, fixedBillId: v.fixedBillId || '', ...(initial.refMonth ? { refMonth: initial.refMonth } : {}), method: v.method && v.method !== store.NEW_METHOD ? v.method : '', notes: v.notes };
         if (!editing) payload.origin = initial.origin || (v.fixedBillId ? 'fixed' : 'manual');
       }
       const rec = await save(payload);
