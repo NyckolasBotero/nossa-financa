@@ -237,6 +237,12 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     const pend = P.billsForMonth(d2, '2026-11', TODAY)[0]; assert.equal(pend.bill.amount, 100); assert.equal(pend.avg, 100);
     const fixed = P.billsForMonth({ ...d2, fixedBills: [{ ...bill, billType: 'fixed' }] }, '2026-11', TODAY)[0]; assert.equal(fixed.bill.amount, 100);
   });
+  ok('variável reconhece gastos do extrato pelo nome (sem vínculo)', () => {
+    const loose = [{ ...mk('9', '2026-10-08', 130), description: 'Conta de ÁGUA', fixedBillId: '' }, { ...mk('8', '2026-10-09', 50), description: 'Mercado', fixedBillId: '' }];
+    const dl = { ...d, transactions: loose };
+    assert.equal(P.billPaid(dl, bill, '2026-10'), 130);
+    assert.equal(P.billPaid(dl, { ...bill, billType: 'fixed' }, '2026-10'), null);
+  });
   ok('série mês a mês das variáveis com filtro de categoria', () => {
     const s = P.variableSeries(d, '2026-11', 6); assert.equal(s.months.length, 6); assert.equal(s.lines.length, 1);
     assert.deepEqual(s.lines[0].values.slice(-3), [80, 120, 95]);

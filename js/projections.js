@@ -127,16 +127,23 @@ export const billApplies = (b, m) => !b.archived && billFrom(b) <= m && (!b.endM
 export const billKind = (b) => (b.kind === 'income' ? 'income' : 'expense');
 
 export function billStatus(d, b, month, today) {
-  const paidTx = all(d).find((t) => t.fixedBillId === b.id && t.type === billKind(b) && ym(t.date) === month);
+  const paidTx = all(d).find((t) => matchesBill(t, b) && t.type === billKind(b) && ym(t.date) === month);
   const due = dueDate(month, b.dueDay);
   if (paidTx) return { status: 'paid', due, tx: paidTx, lateDays: Math.max(0, diffDays(due, paidTx.date)) };
   const late = today > due;
   return { status: late ? 'late' : 'pending', due, tx: null, lateDays: late ? diffDays(due, today) : 0 };
 }
+/** Lançamento que pertence à conta: ligado a ela ou, nas variáveis, um gasto do extrato com o nome da conta (ex.: "Água"). */
+export function matchesBill(t, b) {
+  if (t.fixedBillId === b.id) return true;
+  if (t.fixedBillId || b.kind === 'income' || b.billType !== 'variable' || t.type !== 'expense') return false;
+  const n = norm(b.name);
+  return n.length >= 3 && (norm(t.description).includes(n) || norm(t.merchant).includes(n));
+}
 /** Conta variável: o valor muda todo mês (água, luz). O previsto é a média dos meses pagos. */
 export const isVariable = (b) => billKind(b) === 'expense' && b.billType === 'variable';
 export function billPaid(d, b, m) {
-  const v = all(d).filter((t) => t.fixedBillId === b.id && t.type === billKind(b) && ym(t.date) === m);
+  const v = all(d).filter((t) => matchesBill(t, b) && t.type === billKind(b) && ym(t.date) === m);
   return v.length ? round2(sum(v, (t) => t.amount)) : null;
 }
 export function billAverage(d, b, month, n = 6) {
