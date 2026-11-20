@@ -4,7 +4,7 @@
  */
 import * as store from './store.js';
 import * as P from './projections.js';
-import { $, $$, esc, drop, monthShort, pill, emptyState, formModal, confirmDialog, toast, brl, fmtDate, monthLabel } from './ui.js';
+import { $, $$, esc, drop, monthShort, pill, emptyState, formModal, openModal, confirmDialog, toast, brl, fmtDate, monthLabel } from './ui.js';
 import { openTxModal, askMethod } from './transactions.js';
 import { askCategory } from './categories.js';
 import { renderDayChart } from './daychart.js';
@@ -74,14 +74,32 @@ export function openBillModal(bill = null, kindArg = 'expense') {
 async function linkHistory(rec, { quiet = false } = {}) {
   const list = store.state.transactions.filter((x) => !x.archived && !x.fixedBillId && P.matchesBill(x, rec)).slice(0, 80);
   if (!list.length) {
-    if (!quiet && !store.state.transactions.some((x) => x.fixedBillId === rec.id)) toast(`Nenhum lançamento do extrato tem "${rec.name}" no nome. Use o mesmo nome do extrato ou pague pelo botão Pagar.`, { kind: 'warn' });
-    return;
+    if (quiet) return;
+    return pickHistory(rec);   // nada com o nome da conta: deixa escolher à mão no extrato
   }
   const total = list.reduce((a, x) => a + x.amount, 0);
   if (!(await confirmDialog({ title: `Mover o histórico de "${rec.name}"`, text: `Encontrei ${list.length} ${list.length === 1 ? 'lançamento' : 'lançamentos'} no extrato com esse nome (${brl(total)} no total). Ligar todos a esta conta variável para montar a média e o gráfico mês a mês?`, okLabel: 'Ligar histórico' }))) return;
   const nt = notify.start('Ligando histórico…', `${list.length} lançamentos`);
   try { for (const x of list) await store.update('transactions', { id: x.id, fixedBillId: rec.id }, { silent: true, feedback: null }); nt.done('Histórico ligado', `${list.length} lançamentos agora fazem parte de "${rec.name}"`); }
   catch (e) { nt.fail('Não consegui ligar tudo', e.message); }
+}
+
+/** Escolher à mão quais lançamentos do extrato pertencem a esta conta (quando o nome no extrato é diferente). */
+function pickHistory(rec) {
+  const rows = store.state.transactions.filter((x) => !x.archived && !x.fixedBillId && x.type === 'expense' && x.origin !== 'card_payment' && x.type !== 'card_payment')
+    .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60);
+  if (!rows.length) return toast('Não há lançamentos soltos no extrato para ligar a esta conta.', { kind: 'warn' });
+  const m = openModal({ title: `Ligar lançamentos a "${rec.name}"`, wide: true, body: `<p class="muted small">Marque os gastos do extrato que são desta conta. Eles entram na média e no gráfico mês a mês.</p>
+    <div class="pick-list">${rows.map((x) => `<label class="pick-row"><input type="checkbox" value="${esc(x.id)}"><span>${esc(fmtDate(x.date))}</span><span class="grow">${esc(x.description || x.merchant || 'Sem descrição')}</span><b>${esc(brl(x.amount))}</b></label>`).join('')}</div>
+    <div class="modal-f"><button type="button" class="btn btn-primary" data-ok disabled>Ligar selecionados</button></div>` });
+  const ok = $('[data-ok]', m.body), boxes = () => $$('input:checked', m.body);
+  m.body.addEventListener('change', () => { const n = boxes().length; ok.disabled = !n; ok.textContent = n ? `Ligar ${n} selecionado${n > 1 ? 's' : ''}` : 'Ligar selecionados'; });
+  ok.addEventListener('click', async () => {
+    const ids = boxes().map((i) => i.value); m.close();
+    const nt = notify.start('Ligando lançamentos…', `${ids.length} selecionados`);
+    try { for (const id of ids) await store.update('transactions', { id, fixedBillId: rec.id }, { silent: true, feedback: null }); nt.done('Histórico ligado', `${ids.length} lançamento${ids.length > 1 ? 's' : ''} agora fazem parte de "${rec.name}"`); }
+    catch (e) { nt.fail('Não consegui ligar tudo', e.message); }
+  });
 }
 
 export function payBill(bill, month = '') {   // para conta variável, `bill.amount` já vem com a média dos meses anteriores
@@ -184,7 +202,7 @@ export function render(view) {
       ${P.isVariable(bill) ? `<p class="muted small">Variável${avg != null ? ` · média ${esc(brl(avg))} (${avgCount} ${avgCount === 1 ? 'mês' : 'meses'})` : ' · ainda sem histórico'}</p>` : ''}
       ${h.counted >= 3 && h.late > 0 ? `<p class="hint-warn">${income ? 'Atrasou' : 'Atrasou'} em ${h.late} dos últimos ${h.counted} meses</p>` : ''}</div>
       <div class="bill-r"><b class="${income ? 'pos' : ''}">${esc(brl(bill.amount))}</b>${pill(label, tone)}</div>
-      <div class="bill-a">${status === 'paid' ? (tx ? `<button class="btn btn-primary sm" data-editpay="${esc(tx.id)}">${income ? 'Editar recebimento' : 'Editar pagamento'}</button>` : '') : `<button class="btn btn-primary sm" data-pay="${esc(bill.id)}">${t.act}</button>`}<button class="btn btn-soft sm" data-edit="${esc(bill.id)}">Editar</button>${P.isVariable(bill) ? `<button class="btn btn-ghost sm" data-link="${esc(bill.id)}">Ligar histórico</button>` : ''}<button class="btn btn-danger-soft sm" data-arch="${esc(bill.id)}" aria-label="Excluir ${esc(bill.name)}">Excluir</button></div></article>`;
+      <div class="bill-a">${status === 'paid' ? (tx ? `<button class="btn btn-primary sm" data-editpay="${esc(tx.id)}">${income ? 'Editar recebimento' : 'Editar pagamento'}</button>` : '') : `<button class="btn btn-primary sm" data-pay="${esc(bill.id)}">${t.act}</button>`}<button class="btn btn-soft sm" data-edit="${esc(bill.id)}">Editar</button>${P.isVariable(bill) ? `<button class="btn btn-soft sm" data-link="${esc(bill.id)}">Ligar histórico</button>` : ''}<button class="btn btn-danger-soft sm" data-arch="${esc(bill.id)}" aria-label="Excluir ${esc(bill.name)}">Excluir</button></div></article>`;
   }).join('') : `<div class="card">${income
     ? emptyState('wallet', 'Nenhuma receita fixa neste mês', 'Cadastre salário, aluguel recebido, pensão... Elas entram na projeção de entradas dos próximos meses.', '<button class="btn btn-primary" data-new>Cadastrar receita fixa</button>')
     : emptyState('calendar', 'Nenhuma conta fixa neste mês', 'Cadastre aluguel, internet, escola... Elas entram na previsão de gastos e nos alertas de atraso.', '<button class="btn btn-primary" data-new>Cadastrar conta fixa</button>')}</div>`;

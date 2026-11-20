@@ -327,3 +327,10 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .free-i { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 4px; border-top: 1px solid color-mix(in srgb, var(--muted) 14%, transparent); }
 .free-m { display: grid; min-width: 0; } .free-m b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 800px) { .free-i { grid-template-columns: auto 1fr auto; } .free-i .btn { grid-row: 2; } }
+
+/* escolher lançamentos à mão para ligar a uma conta */
+.pick-list { display: grid; gap: 4px; max-height: 50vh; overflow: auto; margin-top: 12px; }
+.pick-row { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px; background: var(--surface-2); cursor: pointer; }
+.pick-row:hover { filter: brightness(1.08); }
+.pick-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-row span:first-of-type { color: var(--muted); font-size: .85em; min-width: 78px; }
