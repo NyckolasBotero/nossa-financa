@@ -308,6 +308,13 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.equal(P.salaryWithoutPayslip(dd, [{ id: 'p', transactionId: 'm1' }]).length, 0);
     assert.equal(P.manualSalaryFor(dd, [{ id: 'p', transactionId: 'm1' }], 'u', '2026-11-05'), null);
   });
+  ok('receita/conta já paga mostra o valor que realmente entrou no mês, não o cadastrado', () => {
+    const b = { id: 'sal', name: 'Salário', kind: 'income', amount: 2686.16, dueDay: 5, startMonth: '2026-08', archived: false, billType: 'fixed' };
+    const tx = { id: 's1', type: 'income', amount: 2284.64, date: '2026-09-04', fixedBillId: 'sal', ownerId: 'u', accountId: 'a', createdAt: '2026-09-04' };
+    const dd = { ...d, fixedBills: [b], transactions: [tx] };
+    assert.equal(P.billsForMonth(dd, '2026-09', '2026-11-20', 'income')[0].bill.amount, 2284.64);
+    assert.equal(P.billsForMonth(dd, '2026-10', '2026-11-20', 'income')[0].bill.amount, 2686.16);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

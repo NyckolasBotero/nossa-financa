@@ -151,6 +151,9 @@ export async function linkPayslip(ps) {
     }
     if (P.billStatus(store.data(), fb, tx.date.slice(0, 7), store.today()).tx) return { ok: false, error: `Em ${monthLabel(tx.date.slice(0, 7))} a receita "${fb.name}" já foi recebida por outro lançamento.` };
     await store.update('transactions', { id: tx.id, fixedBillId: fb.id }, { silent: true, feedback: null });
+    // a previsão dos próximos meses usa o líquido do contracheque mais recente
+    const newest = store.activeOf('payslips').filter((x) => x.ownerId === ps.ownerId && x.transactionId).sort((a, b) => (a.payDate < b.payDate ? 1 : -1))[0];
+    if (newest && newest.id === ps.id && fb.amount !== tx.amount && /sal[aá]rio/i.test(fb.name)) await store.update('fixedBills', { id: fb.id, amount: tx.amount }, { silent: true, feedback: null }).catch(() => {});
     return { ok: true, created, bill: fb };
   } catch (e) { return { ok: false, error: e.message || 'Erro ao ligar.' }; }
 }

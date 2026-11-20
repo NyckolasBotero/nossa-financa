@@ -157,7 +157,7 @@ export function billsForMonth(d, month, today, kind = 'expense') {
   return d.fixedBills.filter((b) => billKind(b) === kind && billApplies(b, month))
     .map((b) => {
       const st = billStatus(d, b, month, today);
-      if (!isVariable(b)) return { bill: b, ...st };
+      if (!isVariable(b)) return { bill: st.tx && st.tx.amount !== b.amount ? { ...b, amount: st.tx.amount, base: b } : b, ...st };   // já paga/recebida: vale o valor que de fato entrou/saiu naquele mês
       const { avg, count } = billAverage(d, b, month);
       return { bill: { ...b, amount: st.tx ? st.tx.amount : avg ?? b.amount }, base: b, avg, avgCount: count, ...st };
     }).sort((a, b) => a.due.localeCompare(b.due));
