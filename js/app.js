@@ -10,6 +10,7 @@ import { addMonths } from './projections.js';
 import { CONFIG } from './config.js';
 import { toggleTheme, getTheme } from './theme.js';
 import { familySvg } from './logo.js';
+import { mountBrandAnim } from './brandanim.js';
 import { waveSet } from './waves.js';
 import { showLoader, hideLoader, setLoaderText } from './loader.js';
 import { initRipple, initOrbs } from './fx.js';
@@ -113,7 +114,8 @@ function paintStatic() {
   $('#menu-btn').innerHTML = icon('menu');
   $('#m-prev').innerHTML = icon('chevL'); $('#m-next').innerHTML = icon('chevR');
   $('#fab-btn').innerHTML = icon('plus');
-  $('#brand-logo').innerHTML = familySvg({ cls: 'logo logo-sm' });
+  const bl = $('#brand-logo');
+  if (bl && !bl.firstElementChild) { bl.innerHTML = familySvg({ cls: 'logo logo-sm' }); mountBrandAnim(bl); }   // logo animado em loop (estático se movimento reduzido)
   const themeIcons = `${icon('moon', 'i-moon')}${icon('sun', 'i-sun')}`;
   $('#theme-btn').innerHTML = themeIcons;
   $('#theme-side').innerHTML = `${icon('moon', 'ts-moon')}${icon('sun', 'ts-sun')}<span class="nav-l">Tema claro/escuro</span>`;

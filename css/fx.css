@@ -50,6 +50,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 /* ---------- logo ---------- */
 .logo { display: block; width: 100%; height: auto; overflow: visible; }
 .logo-sm { width: 46px; height: auto; flex: none; }
+.logo-anim { display: block; width: 46px; height: auto; flex: none; overflow: visible; }
 .brand { padding-left: 2px; }
 .brand:hover .lg-boy, .brand:hover .lg-girl { animation: bob .8s ease-in-out infinite; } .brand:hover .lg-girl { animation-delay: .15s; }
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
