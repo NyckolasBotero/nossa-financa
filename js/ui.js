@@ -149,7 +149,7 @@ export function formModal({ title, fields, values = {}, submitLabel = 'Salvar', 
   footer.append(h('<span class="grow"></span>'), h('<button type="button" class="btn btn-ghost" data-cancel>Cancelar</button>'), h(`<button type="submit" class="btn btn-primary">${esc(submitLabel)}</button>`));
   const modal = openModal({ title, body: form, wide, onClose });
   const picked = {};          // arquivos escolhidos
-  const byName = (n) => form.elements[n];
+  const byName = (n) => form.querySelector(`[name="${n}"]`);
   const wrap = (n) => $(`[data-field="${n}"]`, form);
   const fmap = Object.fromEntries(fields.map((f) => [f.name, f]));
 
@@ -177,7 +177,9 @@ export function formModal({ title, fields, values = {}, submitLabel = 'Salvar', 
       const f = fmap[name], el = byName(name), cur = el.value;
       f.options = options; if (placeholder !== undefined) f.placeholder = placeholder;
       const tmp = h(fieldHtml(f, cur));
-      el.replaceWith($('select', tmp));
+      // troca só as opções: o <select> (e a lista suspensa que o envolve) continuam os mesmos, sem duplicar caixas
+      el.innerHTML = $('select', tmp).innerHTML;
+      el.value = [...el.options].some((o) => o.value === cur) ? cur : (el.options[0]?.value ?? '');
     },
     error(msg) { const b = $('.form-error', form); b.textContent = msg || ''; b.hidden = !msg; if (msg) b.scrollIntoView({ block: 'nearest' }); },
     files: (name) => picked[name] || [],
