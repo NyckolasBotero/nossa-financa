@@ -4,7 +4,7 @@
  * crescem como barras de um gráfico e as cabeças aparecem, revelando a família em pé, lado a lado.
  * A família fica parada um tempo, desfaz e recomeça — enquanto o site estiver aberto.
  * Cores vêm das variáveis --logo-1..4 (acompanham o tema). Sem movimento reduzido: logo estático.
- * mountBrandAnim(elemento) → { stop(), seek(t), duration } | null
+ * mountBrandAnim(elemento) → { stop(), seek(t), duration, untilFamily() } | null
  */
 import { familySvg } from './logo.js';
 
@@ -140,15 +140,16 @@ function readPal() {
   return { c, muted: g('--muted') || '#8fa9bd', line: g('--line') || '#d9e6ef' };
 }
 
-const MARKUP = `<svg class="logo-anim" viewBox="-66 -57 132 114" role="img" aria-label="Nossa Finança" xmlns="http://www.w3.org/2000/svg">
-  <defs><filter id="nf-gooF" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter></defs>
+let uid = 0;
+const markup = (id) => `<svg class="logo-anim" viewBox="-66 -57 132 114" role="img" aria-label="Nossa Finança" xmlns="http://www.w3.org/2000/svg">
+  <defs><filter id="${id}" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter></defs>
   <g class="ba-world">
     <g class="ba-gh2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0"><path/><path/><path/><path/></g>
     <g class="ba-gh1" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0"><path/><path/><path/><path/></g>
     <g class="ba-shape">
       <g class="ba-barcode" opacity="0"></g>
       <g class="ba-coin" opacity="0"><circle r="40" fill="none" stroke-width="2.5"/><text y="12" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="700" font-size="34">R$</text></g>
-      <g class="ba-goo" filter="url(#nf-gooF)"><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+      <g class="ba-goo" filter="url(#${id})"><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
     </g>
     <g class="ba-fam" visibility="hidden">
       <line class="ba-floor" x1="-66" x2="66" y1="52" y2="52" stroke-width="2.5" stroke-linecap="round" opacity="0"/>
@@ -161,13 +162,13 @@ const MARKUP = `<svg class="logo-anim" viewBox="-66 -57 132 114" role="img" aria
   </g>
 </svg>`;
 
-export function mountBrandAnim(host) {
+export function mountBrandAnim(host, { speed = 1 } = {}) {
   if (!host) return null;
   const still = () => { host.innerHTML = familySvg({ cls: 'logo logo-sm' }); return null; };
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return still();
   let svg, raf = 0, stopped = false;
   try {
-    host.innerHTML = MARKUP;
+    host.innerHTML = markup('nf-gooF' + (++uid));
     svg = host.firstElementChild;
     tables();
   } catch { return still(); }
@@ -338,7 +339,7 @@ export function mountBrandAnim(host) {
     if (!last) last = now;
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (document.hidden) return;
-    t += dt; if (t >= T_END) t = 0;
+    t += dt * speed; if (t >= T_END) t = 0;
     if (now - drawn < 30) return;
     drawn = now; frame(t);
   }
@@ -349,6 +350,7 @@ export function mountBrandAnim(host) {
   return {
     stop() { stopped = true; cancelAnimationFrame(raf); mo.disconnect(); },
     seek(x) { stopped = true; cancelAnimationFrame(raf); frame(x); },   // para testes visuais
-    duration: T_END
+    duration: T_END,
+    untilFamily() { const f = T_FAM + GROW_END; return t < f ? (f - t) / speed : 0; }   // segundos até a família ficar completa
   };
 }

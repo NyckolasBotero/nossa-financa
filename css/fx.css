@@ -88,6 +88,8 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .ld-glow { position: absolute; width: 70%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--brand) 40%, transparent), transparent 70%); filter: blur(10px); animation: glow 2.4s ease-in-out infinite; }
 @keyframes glow { 50% { transform: scale(1.18); opacity: .7; } }
 .ld-ring { position: absolute; inset: 4%; border-radius: 50%; border: 7px solid transparent; transform-style: preserve-3d; }
+.ld-anim { position: relative; z-index: 2; width: 100%; }
+.ld-anim .logo-anim { width: 100%; height: auto; } .ld-anim .logo-sm { width: 60%; margin: 0 auto; }
 .ld-r1 { border-top-color: var(--brand); border-right-color: var(--mint); animation: ring-a 1.9s linear infinite; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--brand) 60%, transparent)); }
 .ld-r2 { inset: 12%; border-width: 5px; border-bottom-color: var(--logo-2); border-left-color: var(--logo-4); animation: ring-b 2.6s linear infinite; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--logo-2) 50%, transparent)); }
 @keyframes ring-a { from { transform: rotateX(68deg) rotateZ(0); } to { transform: rotateX(68deg) rotateZ(360deg); } }
