@@ -140,7 +140,7 @@ function readPal() {
 
 let uid = 0;
 const markup = (id) => `<svg class="logo-anim" viewBox="-66 -57 132 114" role="img" aria-label="Nossa Finança" xmlns="http://www.w3.org/2000/svg">
-  <defs><filter id="${id}" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter></defs>
+  <defs><filter id="${id}" filterUnits="userSpaceOnUse" x="-120" y="-110" width="240" height="220" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter></defs>
   <g class="ba-world">
     <g class="ba-gh2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0"><path/><path/><path/><path/></g>
     <g class="ba-gh1" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0"><path/><path/><path/><path/></g>
