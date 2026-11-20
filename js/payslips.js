@@ -129,33 +129,44 @@ export function openPayslipEditor(ps = null, prefill = null) {
   form.addEventListener('submit', submit);
   return modal;
 }
-/** Ligação automática: contracheques já lançados cujo salário não consta como recebido em Receitas fixas. */
+/**
+ * Faz o líquido do contracheque constar como recebido em Receitas fixas: liga o lançamento a uma receita de salário
+ * (ou cria a receita "Salário" se não houver). Devolve { ok, created, error }.
+ */
+export async function linkPayslip(ps) {
+  const tx = ps.transactionId ? store.state.transactions.find((t) => t.id === ps.transactionId && !t.archived) : null;
+  if (!tx) return { ok: false, error: 'Este contracheque não foi lançado no extrato. Edite-o e marque "Lançar o líquido como receita".' };
+  if (tx.fixedBillId) return { ok: true, already: true };
+  const incomes = store.activeOf('fixedBills').filter((b) => P.billKind(b) === 'income');
+  const mine = incomes.filter((b) => b.ownerId === ps.ownerId || b.scope === 'shared');
+  let fb = mine.find((b) => store.categoryOf(b.categoryId)?.tag === 'salary') || mine.find((b) => /sal[aá]rio|contracheque|folha|pagamento/i.test(b.name)) || (mine.length === 1 ? mine[0] : null), created = false;
+  try {
+    if (!fb) {
+      const first = store.activeOf('payslips').filter((x) => x.ownerId === ps.ownerId).map((x) => x.payDate.slice(0, 7)).sort()[0] || tx.date.slice(0, 7);
+      const cat = store.activeOf('categories').find((x) => x.type === 'income' && x.tag === 'salary');
+      fb = await store.create('fixedBills', { name: 'Salário', amount: tx.amount, dueDay: Number(tx.date.slice(8, 10)) || 5, categoryId: cat?.id || '', billType: 'fixed', accountId: tx.accountId || '', cardId: '', ownerId: ps.ownerId, scope: 'individual', startMonth: first, endMonth: '', method: '', kind: 'income' }, { silent: true, feedback: null });
+      created = true;
+    }
+    if (P.billStatus(store.data(), fb, tx.date.slice(0, 7), store.today()).tx) return { ok: false, error: `Em ${monthLabel(tx.date.slice(0, 7))} a receita "${fb.name}" já foi recebida por outro lançamento.` };
+    await store.update('transactions', { id: tx.id, fixedBillId: fb.id }, { silent: true, feedback: null });
+    return { ok: true, created, bill: fb };
+  } catch (e) { return { ok: false, error: e.message || 'Erro ao ligar.' }; }
+}
+/** Ligação automática (uma vez por sessão) dos contracheques ainda não ligados; falhas aparecem em aviso. */
 const tried = new Set();
 const allD = () => ({ categories: store.state.categories, cards: store.state.cards, fixedBills: store.state.fixedBills, transactions: store.state.transactions });
 export async function autoLinkPayslips() {
-  const d = store.data();
-  const incomes = store.activeOf('fixedBills').filter((b) => P.billKind(b) === 'income');
-  let n = 0, created = 0;
+  let n = 0, created = 0; const errs = [];
   for (const ps of store.activeOf('payslips')) {
     const tx = ps.transactionId ? store.state.transactions.find((t) => t.id === ps.transactionId && !t.archived) : null;
     if (!tx || tx.fixedBillId || tried.has(ps.id)) continue;
     tried.add(ps.id);
-    const mine = incomes.filter((b) => b.ownerId === ps.ownerId || b.scope === 'shared');
-    let fb = mine.find((b) => store.categoryOf(b.categoryId)?.tag === 'salary') || mine.find((b) => /sal[aá]rio|contracheque|folha|pagamento/i.test(b.name)) || (mine.length === 1 ? mine[0] : null);
-    if (!fb) {
-      // não há receita fixa de salário: cria uma, para o líquido aparecer em Receitas fixas
-      try {
-        const first = store.activeOf('payslips').filter((x) => x.ownerId === ps.ownerId).map((x) => x.payDate.slice(0, 7)).sort()[0] || tx.date.slice(0, 7);
-        const cat = store.activeOf('categories').find((x) => x.type === 'income' && x.tag === 'salary');
-        fb = await store.create('fixedBills', { name: 'Salário', amount: tx.amount, dueDay: Number(tx.date.slice(8, 10)) || 5, categoryId: cat?.id || '', billType: 'fixed', accountId: tx.accountId || '', cardId: '', ownerId: ps.ownerId, scope: 'individual', startMonth: first, endMonth: '', method: '', kind: 'income' }, { silent: true, feedback: null });
-        incomes.push(fb); created++;
-      } catch { continue; }
-    }
-    if (!fb || P.billStatus(d, fb, tx.date.slice(0, 7), store.today()).tx) continue;   // já há outra receita quitando esse mês
-    try { await store.update('transactions', { id: tx.id, fixedBillId: fb.id }, { silent: true, feedback: null }); n++; } catch { /* tenta de novo na próxima sessão */ }
+    const r = await linkPayslip(ps);
+    if (r.ok && !r.already) { n++; if (r.created) created++; } else if (!r.ok) errs.push(r.error);
   }
   if (created) toast('Criei a receita fixa "Salário" para o contracheque aparecer em Receitas fixas.', { kind: 'ok' });
   if (n) toast(`${n} ${n === 1 ? 'contracheque ligado' : 'contracheques ligados'} à receita fixa.`, { kind: 'ok' });
+  if (errs.length) toast(`Não consegui ligar o salário a Receitas fixas: ${errs[0]} Use o botão "Ligar a Receitas fixas" no contracheque.`, { kind: 'warn', ms: 9000 });
 }
 export const openPayslipModal = () => openPayslipEditor();
 
@@ -182,7 +193,7 @@ export function render(view) {
     const items = parseItems(x), tx = x.transactionId ? store.state.transactions.find((t) => t.id === x.transactionId) : null;
     const rows = items.length ? `<table class="tbl ps-tbl"><thead><tr><th>Descrição</th><th class="num">Ref.</th><th class="num">Proventos</th><th class="num">Descontos</th></tr></thead><tbody>${items.map((i) => `<tr><td>${esc(i.label)}</td><td class="num">${esc(i.ref || '')}</td><td class="num pos">${i.kind === 'earning' ? esc(brl(i.value)) : ''}</td><td class="num neg">${i.kind === 'discount' ? esc(brl(i.value)) : ''}</td></tr>`).join('')}<tr class="tot"><td colspan="2">Total</td><td class="num">${esc(brl(x.gross || 0))}</td><td class="num">${esc(brl(x.discounts || 0))}</td></tr></tbody></table>` : '<p class="muted">Sem itens detalhados.</p>';
     return `<article class="bill ps-card"><div class="ps-month"><b>${esc(monthLabel(x.refMonth))}</b><small>referência</small></div>
-      <div class="bill-main"><h3>Líquido ${esc(brl(x.net))}</h3><p class="muted">Caiu em ${esc(fmtDate(x.payDate))} · ${esc(store.userName(x.ownerId))}${tx ? ' · lançado no extrato' : ''}</p></div>
+      <div class="bill-main"><h3>Líquido ${esc(brl(x.net))}</h3><p class="muted">Caiu em ${esc(fmtDate(x.payDate))} · ${esc(store.userName(x.ownerId))}${tx ? ' · lançado no extrato' : ''}</p>${tx ? (() => { const fb = tx.fixedBillId ? store.byId('fixedBills', tx.fixedBillId) : null; return fb ? `<p class="small pos">✓ Conta como recebido em Receitas fixas (${esc(fb.name)})</p>` : `<p class="small neg">Ainda não conta em Receitas fixas <button class="btn btn-soft sm" data-linkfb="${esc(x.id)}">Ligar a Receitas fixas</button></p>`; })() : ''}</div>
       <div class="bill-r"><b class="pos">${esc(brl(x.net))}</b>${pill(`Descontos ${brlShort(x.discounts || 0)}`, 'neutral')}</div>
       ${(() => { const m = x.payDate.slice(0, 7), bills = P.round2(P.billsForMonth(store.data(), m, store.today()).reduce((s, r) => s + r.bill.amount, 0)), left = P.round2(x.net - bills); return bills > 0 ? `<p class="ps-left muted">Após as contas fixas de ${esc(monthLabel(m))} (${esc(brl(bills))}) sobram <b class="${left >= 0 ? 'pos' : 'neg'}">${esc(brl(left))}</b>${left > 0 ? ` <button class="btn btn-soft sm" data-save="${left}">Guardar no cofre</button>` : ''}</p>` : ''; })()}
       <details class="bill-det"><summary>Ver itens</summary>${rows}${x.notes ? `<p class="muted small">${esc(x.notes)}</p>` : ''}</details>
@@ -191,7 +202,8 @@ export function render(view) {
   view.onclick = async (e) => {
     if (e.target.closest('[data-new]')) return openPayslipEditor();
     const ed = e.target.closest('[data-edit]'), de = e.target.closest('[data-del]');
-    const sv = e.target.closest('[data-save]');
+    const sv = e.target.closest('[data-save]'), lk = e.target.closest('[data-linkfb]');
+    if (lk) { const r = await linkPayslip(store.byId('payslips', lk.dataset.linkfb)); return toast(r.ok ? (r.created ? 'Criei a receita fixa "Salário" e liguei o contracheque.' : 'Contracheque ligado a Receitas fixas.') : r.error, { kind: r.ok ? 'ok' : 'err', ms: r.ok ? 3000 : 9000 }); }
     if (sv) return (await import('./vault.js')).openVaultDeposit(Number(sv.dataset.save));
     if (ed) return openPayslipEditor(store.byId('payslips', ed.dataset.edit));
     if (de) return removePayslip(store.byId('payslips', de.dataset.del));
