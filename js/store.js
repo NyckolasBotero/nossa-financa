@@ -60,10 +60,14 @@ export async function sync({ force = false, minInterval = 30000 } = {}) {
   if (!state.loaded || (!force && Date.now() - lastSync < minInterval)) return false;
   const since = new Date(Date.parse(state.serverTime) - 5000).toISOString();
   const r = await api.call('sync', { since }, { silent: !force, retries: 1, ...(force ? { feedback: { start: 'Sincronizando…', done: 'Dados atualizados' } } : {}) });
-  for (const k of Object.keys(KIND)) (r[k] || []).forEach((rec) => upsert(k, rec));
+  const meta = (x) => JSON.stringify([x.users, x.settings, x.inboxCounts]);
+  const before = meta(state);
+  let changed = false;
+  for (const k of Object.keys(KIND)) (r[k] || []).forEach((rec) => { upsert(k, rec); changed = true; });
   Object.assign(state, { users: r.users, settings: r.settings, inboxCounts: r.inboxCounts, serverTime: r.serverTime });
   lastSync = Date.now();
-  emit();
+  // sem novidade, não redesenha: evita a tela piscar sozinha
+  if (changed || force || meta(state) !== before) emit();
   return true;
 }
 
