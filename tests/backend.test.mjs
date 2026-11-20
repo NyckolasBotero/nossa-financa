@@ -308,6 +308,12 @@ ok('receita fixa: tipo, categoria e vínculo coerentes; forma de pagamento salva
   assert.equal(call('fixedBill.create', { name: 'Errada', kind: 'income', amount: 1, dueDay: 5, categoryId: cat('Mercado'), ownerId: me.id }, meTok).error.code, 'VALIDATION', 'categoria de despesa em receita');
   assert.equal(call('fixedBill.create', { name: 'Crédito não recebe', kind: 'income', amount: 1, dueDay: 5, cardId: credit.id, ownerId: me.id }, meTok).error.code, 'VALIDATION');
   assert.equal(call('fixedBill.create', { name: 'Salário', kind: 'expense', amount: 10, dueDay: 5, ownerId: me.id }, meTok).ok, true, 'mesmo nome em tipos diferentes é permitido');
+  // mesmo nome: avulsas (um mês só) e períodos que não se cruzam podem; duas recorrentes no mesmo período, não
+  const luzA = call('fixedBill.create', { name: 'Luz', amount: 200, dueDay: 10, ownerId: me.id, startMonth: '2026-10' }, meTok);
+  assert.equal(luzA.ok, true);
+  assert.equal(call('fixedBill.create', { name: 'luz', amount: 190, dueDay: 10, ownerId: me.id, startMonth: '2026-09', endMonth: '2026-09' }, meTok).ok, true, 'avulsa de setembro com recorrente existente');
+  assert.equal(call('fixedBill.create', { name: 'Luz', amount: 1, dueDay: 10, ownerId: me.id, startMonth: '2026-11' }, meTok).error.code, 'DUPLICATE', 'duas recorrentes no mesmo período');
+  assert.equal(call('fixedBill.create', { name: 'Luz', amount: 1, dueDay: 10, ownerId: me.id, startMonth: '2026-01', endMonth: '2026-08' }, meTok).ok, true, 'período anterior que não cruza');
   assert.equal(call('fixedBill.create', { name: 'Sem tipo', amount: 10, dueDay: 5, ownerId: me.id }, meTok).data.kind, 'expense', 'padrão é conta fixa');
   const tx = { date: '2026-11-06', amount: 5123.45, description: 'Salário fixo', accountId: acc.id, ownerId: me.id, fixedBillId: inc.data.id, method: 'Pix' };
   assert.equal(call('tx.create', { ...tx, type: 'expense' }, meTok).error.code, 'VALIDATION', 'despesa não pode quitar receita fixa');

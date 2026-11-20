@@ -497,11 +497,15 @@ function crossCheck_(name, o) {
 function dupName_(name, o) {
   if (['Accounts', 'Cards', 'Categories', 'Goals', 'FixedBills'].indexOf(name) < 0) return;
   const n = String(o.name).trim().toLowerCase();
+  // contas fixas com o mesmo nome podem coexistir se não valem no mesmo período ou se uma delas é avulsa (vale um mês só)
+  const span = function (b) { return [String(b.startMonth || (b.createdAt ? String(b.createdAt).slice(0, 7) : '') || '0000-01').slice(0, 7), String(b.endMonth || '9999-12').slice(0, 7)]; };
+  const mine = name === 'FixedBills' ? span(o) : null;
   const clash = readAll_(name).some(function (x) {
+    if (mine) { const t = span(x); if (t[1] < mine[0] || mine[1] < t[0] || mine[0] === mine[1] || t[0] === t[1]) return false; }
     return !x.archived && x.id !== o.id && String(x.name).trim().toLowerCase() === n &&
       (name !== 'Categories' || x.type === o.type) && (name !== 'FixedBills' || (x.kind || 'expense') === (o.kind || 'expense')) && (name === 'Categories' || name === 'Goals' || name === 'FixedBills' || x.ownerId === o.ownerId);
   });
-  if (clash) throw fail_('DUPLICATE', 'Já existe um registro com esse nome.');
+  if (clash) throw fail_('DUPLICATE', name === 'FixedBills' ? 'Já existe uma conta com esse nome que vale nesse período. Para lançar só um mês (ex.: a conta de setembro), escolha "Só uma vez (avulsa)".' : 'Já existe um registro com esse nome.');
 }
 
 // ---------------------------------------------------------------- CRUD genérico
