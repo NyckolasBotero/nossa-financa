@@ -315,6 +315,19 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.equal(P.billsForMonth(dd, '2026-09', '2026-11-20', 'income')[0].bill.amount, 2284.64);
     assert.equal(P.billsForMonth(dd, '2026-10', '2026-11-20', 'income')[0].bill.amount, 2686.16);
   });
+  ok('dia a dia: acumulado de receitas e saídas, filtro por categoria e dias que a receita dura', () => {
+    const cats = [{ id: 'cv', type: 'expense', tag: 'other' }, { id: 'cm', type: 'expense', tag: 'other' }, { id: 'cs', type: 'income', tag: 'salary' }];
+    const tx = (id, date, amount, type, categoryId, extra = {}) => ({ id, date, amount, type, categoryId, ownerId: 'u', accountId: 'a', createdAt: date, ...extra });
+    const dd = { ...d, categories: cats, fixedBills: [{ id: 'f', kind: 'expense', name: 'X' }], transactions: [tx('1', '2026-11-05', 1000, 'income', 'cs'), tx('2', '2026-11-03', 100, 'expense', 'cv'), tx('3', '2026-11-10', 300, 'expense', 'cm'), tx('4', '2026-11-10', 50, 'expense', 'cm', { fixedBillId: 'f' })], _ix: undefined };
+    const all = P.dailyCumulative(dd, '2026-11', '2026-11-10');
+    assert.equal(all.days.length, 30); assert.equal(all.days[9].expense, 450); assert.equal(all.days[9].income, 1000); assert.equal(all.days[10].expense, null);
+    assert.equal(all.perDay, 45); assert.equal(all.lasts, 22.2);
+    assert.equal(P.dailyCumulative(dd, '2026-11', '2026-11-10', { categoryId: 'cv' }).expenseTotal, 100);
+    assert.equal(P.dailyCumulative(dd, '2026-11', '2026-11-10', { onlyBills: true }).expenseTotal, 50);
+    assert.equal(P.dailyCumulative(dd, '2026-11', '2026-11-10', { categoryId: 'cv' }).incomeTotal, 1000);
+    assert.equal(P.dailyCumulative({ ...dd, transactions: [tx('9', '2026-11-02', 500, 'income', 'cs'), tx('8', '2026-11-04', 600, 'expense', 'cv')] }, '2026-11', '2026-11-10').crossingDay, 4);
+    assert.equal(P.dailyCumulative({ ...dd, transactions: [tx('7', '2026-11-03', 100, 'expense', 'cv'), tx('6', '2026-11-05', 1000, 'income', 'cs')] }, '2026-11', '2026-11-10').crossingDay, null);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

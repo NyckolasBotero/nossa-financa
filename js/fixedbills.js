@@ -7,6 +7,7 @@ import * as P from './projections.js';
 import { $, $$, esc, drop, monthShort, pill, emptyState, formModal, confirmDialog, toast, brl, fmtDate, monthLabel } from './ui.js';
 import { openTxModal, askMethod } from './transactions.js';
 import { askCategory } from './categories.js';
+import { renderDayChart } from './daychart.js';
 import { renderVariableChart } from './varchart.js';
 import * as notify from './notify.js';
 
@@ -149,6 +150,7 @@ export function render(view) {
   renderOverview($('#fx-ov', view), d, today, month);
   renderSalaryAlert(d, month);
   $('#fx-var-card', view).hidden = income;
+  renderDayChart($('#fx-day', view));
   if (!income) renderVariableChart($('#fx-var', view));
   $('#fx-list', view).innerHTML = rows.length ? rows.map(({ bill, status, due, tx, lateDays, avg, avgCount }) => {
     const cat = store.categoryOf(bill.categoryId), h = P.lateHistory(d, bill, today), [label, tone] = STATUS[kind][status];

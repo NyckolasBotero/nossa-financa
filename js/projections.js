@@ -487,3 +487,26 @@ export function salaryWithoutPayslip(d, payslips, txs = d.transactions) {
   for (const t of txs) if (!used.has(t.id) && t.origin !== 'payslip' && isSalaryTx(d, t)) by.set(ym(t.date), [...(by.get(ym(t.date)) || []), t]);
   return [...by.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([month, list]) => ({ month, txs: list, total: round2(sum(list, (x) => x.amount)) }));
 }
+
+/**
+ * Dia a dia do mês: receitas e saídas acumuladas. Filtros: categoria (vale para o tipo da categoria) e "só Contas F.V".
+ * Dias depois de hoje (no mês atual) ficam nulos. Também estima quantos dias a receita dura no ritmo atual de gasto.
+ */
+export function dailyCumulative(d, month, today, { categoryId = '', onlyBills = false } = {}, txs = d.transactions) {
+  const n = daysInMonth(month), cat = categoryId ? ix(d).cat.get(categoryId) : null;
+  const incF = (t) => t.type === 'income' && (!cat || cat.type !== 'income' || t.categoryId === categoryId);
+  const expF = (t) => t.type === 'expense' && (!cat || cat.type !== 'expense' || t.categoryId === categoryId) && (!onlyBills || (t.fixedBillId && d.fixedBills.some((b) => b.id === t.fixedBillId && billKind(b) === 'expense')));
+  const inc = Array(n).fill(0), exp = Array(n).fill(0);
+  for (const t of txs) {
+    if (ym(t.date) !== month || isFood(d, t)) continue;
+    const day = Number(t.date.slice(8, 10)) - 1;
+    if (incF(t)) inc[day] += t.amount; else if (expF(t)) exp[day] += t.amount;
+  }
+  const last = month === ym(today) ? Number(today.slice(8, 10)) : month < ym(today) ? n : 0;
+  let a = 0, b = 0;
+  const days = Array.from({ length: n }, (_, i) => { a += inc[i]; b += exp[i]; return { day: i + 1, income: i < last ? round2(a) : null, expense: i < last ? round2(b) : null }; });
+  const incomeTotal = round2(a), expenseTotal = round2(b), elapsed = Math.max(1, last);
+  const perDay = round2(expenseTotal / elapsed);
+  const crossing = days.find((x) => x.income != null && x.income > 0 && x.expense >= x.income);
+  return { days, incomeTotal, expenseTotal, perDay, lastDay: last, daysTotal: n, lasts: perDay > 0 && incomeTotal > 0 ? Math.round((incomeTotal / perDay) * 10) / 10 : null, crossingDay: crossing ? crossing.day : null };
+}

@@ -68,23 +68,23 @@ export function areaChart({ points, height = 200, color = 'var(--brand)', label 
 }
 
 /** Várias linhas (uma por série) com pontos; valores nulos viram lacunas. series: [{ name, color, values[] }] */
-export function lineChart({ labels, series, height = 230, label = 'Gráfico de linhas', avg = true }) {
+export function lineChart({ labels, series, height = 230, label = 'Gráfico de linhas', avg = true, tickEvery = 1, legend: showLegend = true }) {
   const W = 600, H = height, L = 66, R = 14, T = 12, B = 28, iw = W - L - R, ih = H - T - B;
   const max = niceMax(Math.max(1, ...series.flatMap((x) => x.values.filter((v) => v != null))));
   const x = (i) => L + (iw * i) / Math.max(1, labels.length - 1), y = (v) => T + ih - (v / max) * ih;
   let g = '';
   for (let i = 0; i <= 4; i++) { const v = (max / 4) * i; g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" class="tick">${esc(brlShort(v).replace('R$ ', ''))}</text>`; }
-  labels.forEach((lb, i) => { g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="tick">${esc(lb)}</text>`; });
+  labels.forEach((lb, i) => { if (i % tickEvery === 0 || i === labels.length - 1) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="tick">${esc(lb)}</text>`; });
   for (const s of series) {
     let d = '', pen = false;
     s.values.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)} `; pen = true; });
     g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
-    s.values.forEach((v, i) => { if (v != null) g += `<circle cx="${x(i)}" cy="${y(v)}" r="4.5" fill="var(--surface)" stroke="${s.color}" stroke-width="2.5"><title>${esc(s.name)} · ${esc(labels[i])}: ${esc(brl(v))}</title></circle>`; });
+    s.values.forEach((v, i) => { if (v != null && (labels.length <= 16 || i === labels.length - 1 || s.values[i + 1] == null)) g += `<circle cx="${x(i)}" cy="${y(v)}" r="4.5" fill="var(--surface)" stroke="${s.color}" stroke-width="2.5"><title>${esc(s.name)} · ${esc(labels[i])}: ${esc(brl(v))}</title></circle>`; });
     const vals = s.values.filter((v) => v != null);
     if (avg && vals.length > 1) { const a = vals.reduce((p, c) => p + c, 0) / vals.length; g += `<line x1="${L}" x2="${W - R}" y1="${y(a)}" y2="${y(a)}" stroke="${s.color}" stroke-width="1.4" stroke-dasharray="5 5" opacity=".55"><title>Média de ${esc(s.name)}: ${esc(brl(a))}</title></line>`; }
   }
   const legend = series.map((s) => { const vals = s.values.filter((v) => v != null), a = vals.length ? vals.reduce((p, c) => p + c, 0) / vals.length : 0; return `<span class="lg"><i style="background:${s.color}"></i>${esc(s.name)} · média ${esc(brl(a))}</span>`; }).join('');
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${g}</svg><div class="legend">${legend}</div>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${g}</svg>${showLegend ? `<div class="legend">${legend}</div>` : ''}`;
 }
 
 /** Anel de progresso (metas). pct de 0 a 1+. */
