@@ -113,6 +113,7 @@ function renderSalaryAlert(d, month) {
 /** Gastos avulsos do mês: despesas lançadas sem conta cadastrada nem vencimento (combustível, padaria...). Só consomem a receita do mês. */
 function renderFree(view, d, today, month) {
   const box = $('#fx-free', view);
+  if (!box) return;
   box.hidden = tab !== 'expense';
   if (box.hidden) return;
   const list = d.transactions.filter((x) => x.type === 'expense' && P.compMonth(x) === month && !x.fixedBillId && !P.isFood(d, x) && !d.fixedBills.some((b) => P.matchesBill(x, b)))
@@ -146,7 +147,15 @@ function renderOverview(el, d, today, month) {
     <p class="muted small">Passado = o que aconteceu. <b>~</b> = previsão (receitas e contas fixas cadastradas, média das variáveis e gasto variável médio). <b>•</b> = mês atual. Acumulado = soma das sobras desde janeiro.</p>`;
 }
 
+/** Garante que os blocos novos existam mesmo que o navegador tenha guardado a versão antiga da tela. */
+function ensureBlocks(view) {
+  const add = (id, after, html) => { if (!$(`#${id}`, view)) $(after, view)?.insertAdjacentHTML('afterend', html); };
+  add('fx-free', '#fx-list', '<article class="card" id="fx-free"></article>');
+  add('fx-day-card', '#fx-list', '<article class="card" id="fx-day-card"><header class="card-h"><h3>Dia a dia do mês</h3><span class="muted small">Receitas x saídas acumuladas</span></header><div id="fx-day"></div></article>');
+  add('fx-ov', '.fx-main', '<aside class="card fx-ov" id="fx-ov"></aside>');
+}
 export function render(view) {
+  ensureBlocks(view);
   import("./payslips.js").then((m) => m.autoLinkPayslips()).catch(() => {});
   const d = store.data(), today = store.today(), month = store.prefs.month, kind = tab, income = kind === 'income', t = T[kind];
   const rows = P.billsForMonth(d, month, today, kind);

@@ -30,7 +30,7 @@ export const currentRoute = () => current?.route;
 
 async function fetchPage(id) {
   if (!pages.has(id)) {
-    const res = await fetch(`pages/${id}.html`);
+    const res = await fetch(`pages/${id}.html`, { cache: 'no-cache' });   // sempre revalida: tela e script não podem ficar de versões diferentes
     if (!res.ok) throw new Error(`Tela ${id} não encontrada.`);
     pages.set(id, await res.text());
   }
