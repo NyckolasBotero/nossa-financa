@@ -339,6 +339,14 @@ ok('rótulos de dia', () => assert.match(dayLabel('2026-11-03'), /^[A-ZÀ-Ú][a-
     assert.equal(P.billsForMonth(paid, '2026-10', today)[0].bill.amount, 420);               // paga: vale o real
     assert.equal(P.outlook(paid, today, 1)[0].fixed, 420);                                    // mês atual no resumo usa o real
   });
+  ok('média da conta variável conta a avulsa de mesmo nome do mês', () => {
+    const rec = { id: 'r', kind: 'expense', billType: 'variable', name: 'Luz Equatorial', amount: 210, dueDay: 1, startMonth: '2026-11' };
+    const one = { id: 'o', kind: 'expense', billType: 'variable', name: 'Luz Equatorial', amount: 212.8, dueDay: 1, startMonth: '2026-10', endMonth: '2026-10' };
+    const tx = (id, bill, date, amount, ref) => ({ id, date, amount, type: 'expense', fixedBillId: bill, refMonth: ref, ownerId: 'u', accountId: 'a' });
+    const dd = { transactions: [tx('a', 'o', '2026-11-01', 212.8, '2026-10'), tx('b', 'r', '2026-12-01', 213.08, '2026-11')], fixedBills: [rec, one], categories: [], cards: [], accounts: [], goals: [], settings: {} };
+    const r = P.billsForMonth(dd, '2026-12', '2026-11-20').find((x) => x.bill.id === 'r');
+    assert.equal(r.avgCount, 2); assert.equal(r.avg, 212.94);
+  });
   ok('contracheque: pagamento em 05/10 é referente a setembro', () => { assert.equal(P.refMonthOf('2026-10-05'), '2026-09'); assert.equal(P.refMonthOf('2026-01-05'), '2025-12'); });
 }
 console.log(`\n${n} grupos de testes de lógica passaram.`);

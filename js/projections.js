@@ -148,9 +148,20 @@ export function billPaid(d, b, m) {
   const v = all(d).filter((t) => matchesBill(t, b) && t.type === billKind(b) && compMonth(t) === m);
   return v.length ? round2(sum(v, (t) => t.amount)) : null;
 }
+/** Valor pago no mês para o histórico/média: da própria conta ou de uma conta avulsa de mesmo nome daquele mês (ex.: a luz de outubro lançada como avulsa). */
+export function historyPaid(d, b, m) {
+  const own = billPaid(d, b, m); if (own != null) return own;
+  if (!isVariable(b)) return null;
+  const n = norm(b.name);
+  for (const o of d.fixedBills) {
+    if (o.id === b.id || billKind(o) !== 'expense' || norm(o.name) !== n || !o.startMonth || o.startMonth !== o.endMonth || o.startMonth !== m) continue;
+    const v = billPaid(d, o, m); if (v != null) return v;
+  }
+  return null;
+}
 export function billAverage(d, b, month, n = 6) {
   const vals = [];
-  for (let i = 1; i <= n; i++) { const v = billPaid(d, b, addMonths(month, -i)); if (v != null) vals.push(v); }
+  for (let i = 1; i <= n; i++) { const v = historyPaid(d, b, addMonths(month, -i)); if (v != null) vals.push(v); }
   return { avg: vals.length ? round2(sum(vals, (x) => x) / vals.length) : null, count: vals.length };
 }
 export function billsForMonth(d, month, today, kind = 'expense') {
@@ -166,7 +177,7 @@ export function billsForMonth(d, month, today, kind = 'expense') {
 export function variableSeries(d, endMonth, n = 12, categoryId = '') {
   const months = Array.from({ length: n }, (_, i) => addMonths(endMonth, i - n + 1));
   const lines = d.fixedBills.filter((b) => isVariable(b) && !b.archived && (!categoryId || b.categoryId === categoryId))
-    .map((b) => ({ bill: b, values: months.map((m) => billPaid(d, b, m)) })).filter((l) => l.values.some((v) => v != null));
+    .map((b) => ({ bill: b, values: months.map((m) => historyPaid(d, b, m)) })).filter((l) => l.values.some((v) => v != null));
   return { months, lines };
 }
 export function lateHistory(d, b, today, back = 6) {   // vale também para receitas fixas (recebidas fora do dia)
