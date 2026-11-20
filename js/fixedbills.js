@@ -8,6 +8,7 @@ import { $, $$, esc, drop, pill, emptyState, formModal, confirmDialog, toast, br
 import { openTxModal, askMethod } from './transactions.js';
 import { askCategory } from './categories.js';
 import { renderVariableChart } from './varchart.js';
+import * as notify from './notify.js';
 
 const T = {
   expense: { new: 'Nova conta', edit: 'Editar conta', create: 'Criar conta', day: 'Vence todo dia', src: 'Conta ou cartão', method: 'Paga com', owner: 'Responsável', saved: 'Conta salva.', hint: 'Meses anteriores não contam como atrasados.',
@@ -51,10 +52,22 @@ export function openBillModal(bill = null, kindArg = 'expense') {
     onSubmit: async (v, c) => {
       const [k, id] = (v.source || ':').split(':');
       const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.startMonth || '', endMonth: v.endMonth || '', method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
-      if (editing) await store.update('fixedBills', { id: bill.id, ...payload }); else await store.create('fixedBills', payload);
+      const rec = editing ? await store.update('fixedBills', { id: bill.id, ...payload }) : await store.create('fixedBills', payload);
       toast(t.saved, { kind: 'ok' }); c.close();
+      if (payload.billType === 'variable' && (!editing || bill.billType !== 'variable')) await linkHistory(rec);
     }
   });
+}
+
+/** Ao virar variável: oferece ligar os gastos antigos do extrato com o nome da conta (ex.: todos os de "Água"). */
+async function linkHistory(rec) {
+  const list = store.state.transactions.filter((x) => !x.archived && !x.fixedBillId && P.matchesBill(x, rec)).slice(0, 80);
+  if (!list.length) return;
+  const total = list.reduce((a, x) => a + x.amount, 0);
+  if (!(await confirmDialog({ title: `Mover o histórico de "${rec.name}"`, text: `Encontrei ${list.length} ${list.length === 1 ? 'lançamento' : 'lançamentos'} no extrato com esse nome (${brl(total)} no total). Ligar todos a esta conta variável para montar a média e o gráfico mês a mês?`, okLabel: 'Ligar histórico' }))) return;
+  const nt = notify.start('Ligando histórico…', `${list.length} lançamentos`);
+  try { for (const x of list) await store.update('transactions', { id: x.id, fixedBillId: rec.id }, { silent: true, feedback: null }); nt.done('Histórico ligado', `${list.length} lançamentos agora fazem parte de "${rec.name}"`); }
+  catch (e) { nt.fail('Não consegui ligar tudo', e.message); }
 }
 
 export function payBill(bill) {   // para conta variável, `bill.amount` já vem com a média dos meses anteriores
