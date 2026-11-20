@@ -86,6 +86,7 @@ const STATUS = {
 let tab = 'expense';
 
 export function render(view) {
+  import("./payslips.js").then((m) => m.autoLinkPayslips()).catch(() => {});
   const d = store.data(), today = store.today(), month = store.prefs.month, kind = tab, income = kind === 'income', t = T[kind];
   const rows = P.billsForMonth(d, month, today, kind);
   const sum = (f) => rows.filter(f).reduce((s, x) => s + x.bill.amount, 0);

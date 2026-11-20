@@ -128,16 +128,26 @@ const tried = new Set();
 export async function autoLinkPayslips() {
   const d = store.data();
   const incomes = store.activeOf('fixedBills').filter((b) => P.billKind(b) === 'income');
-  let n = 0;
+  let n = 0, created = 0;
   for (const ps of store.activeOf('payslips')) {
     const tx = ps.transactionId ? store.state.transactions.find((t) => t.id === ps.transactionId && !t.archived) : null;
     if (!tx || tx.fixedBillId || tried.has(ps.id)) continue;
     tried.add(ps.id);
     const mine = incomes.filter((b) => b.ownerId === ps.ownerId || b.scope === 'shared');
-    const fb = mine.find((b) => store.categoryOf(b.categoryId)?.tag === 'salary') || mine.find((b) => /sal[aá]rio|contracheque|folha|pagamento/i.test(b.name)) || (mine.length === 1 ? mine[0] : null);
+    let fb = mine.find((b) => store.categoryOf(b.categoryId)?.tag === 'salary') || mine.find((b) => /sal[aá]rio|contracheque|folha|pagamento/i.test(b.name)) || (mine.length === 1 ? mine[0] : null);
+    if (!fb) {
+      // não há receita fixa de salário: cria uma, para o líquido aparecer em Receitas fixas
+      try {
+        const first = store.activeOf('payslips').filter((x) => x.ownerId === ps.ownerId).map((x) => x.payDate.slice(0, 7)).sort()[0] || tx.date.slice(0, 7);
+        const cat = store.activeOf('categories').find((x) => x.type === 'income' && x.tag === 'salary');
+        fb = await store.create('fixedBills', { name: 'Salário', amount: tx.amount, dueDay: Number(tx.date.slice(8, 10)) || 5, categoryId: cat?.id || '', billType: 'fixed', accountId: tx.accountId || '', cardId: '', ownerId: ps.ownerId, scope: 'individual', startMonth: first, endMonth: '', method: '', kind: 'income' }, { silent: true, feedback: null });
+        incomes.push(fb); created++;
+      } catch { continue; }
+    }
     if (!fb || P.billStatus(d, fb, tx.date.slice(0, 7), store.today()).tx) continue;   // já há outra receita quitando esse mês
     try { await store.update('transactions', { id: tx.id, fixedBillId: fb.id }, { silent: true, feedback: null }); n++; } catch { /* tenta de novo na próxima sessão */ }
   }
+  if (created) toast('Criei a receita fixa "Salário" para o contracheque aparecer em Receitas fixas.', { kind: 'ok' });
   if (n) toast(`${n} ${n === 1 ? 'contracheque ligado' : 'contracheques ligados'} à receita fixa.`, { kind: 'ok' });
 }
 export const openPayslipModal = () => openPayslipEditor();
