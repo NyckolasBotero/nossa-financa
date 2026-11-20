@@ -110,6 +110,19 @@ function renderSalaryAlert(d, month) {
   el.classList.toggle('here', !!here); el.hidden = false;
   el.onclick = () => { location.hash = '#/payslips'; };
 }
+/** Gastos avulsos do mês: despesas lançadas sem conta cadastrada nem vencimento (combustível, padaria...). Só consomem a receita do mês. */
+function renderFree(view, d, today, month) {
+  const box = $('#fx-free', view);
+  box.hidden = tab !== 'expense';
+  if (box.hidden) return;
+  const list = d.transactions.filter((x) => x.type === 'expense' && P.compMonth(x) === month && !x.fixedBillId && !P.isFood(d, x) && !d.fixedBills.some((b) => P.matchesBill(x, b)))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const total = list.reduce((s, x) => s + x.amount, 0), income = P.monthTotals(d, month).income;
+  const pct = income > 0 ? Math.round((total / income) * 100) : null;
+  box.innerHTML = `<header class="card-h"><h3>Gastos avulsos</h3><button class="btn btn-soft sm" type="button" data-fnew>＋ Novo gasto avulso</button></header>
+    <p class="muted small">Sem vencimento: só consomem a receita de ${esc(monthLabel(month))}. ${list.length ? `Total <b class="neg">${esc(brl(total))}</b>${pct != null ? ` · <b>${pct}%</b> da receita do mês` : ''}.` : 'Nada lançado neste mês.'}</p>
+    <div class="free-list">${list.map((x) => { const c = store.categoryOf(x.categoryId); return `<div class="free-i">${drop(c?.icon || '🧾', c?.color, 'sm')}<div class="free-m"><b>${esc(x.description || x.merchant || c?.name || 'Gasto')}</b><small class="muted">${esc(fmtDate(x.date))}${c ? ` · ${esc(c.name)}` : ''}${x.method ? ` · ${esc(x.method)}` : ''}</small></div><b class="neg">− ${esc(brl(x.amount))}</b><button class="btn btn-soft sm" data-fedit="${esc(x.id)}">Editar</button><button class="btn btn-danger-soft sm" data-fdel="${esc(x.id)}" aria-label="Excluir gasto">Excluir</button></div>`; }).join('')}</div>`;
+}
 const money0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
 const m0 = (v) => `R$ ${money0.format(v)}`, n0 = (v) => money0.format(v);   // n0: sem símbolo, para a tabela
 /** Quadro do ano: o que sobrou/faltou, o acumulado e a previsão dos próximos 6 meses. */
@@ -149,6 +162,7 @@ export function render(view) {
 
   renderOverview($('#fx-ov', view), d, today, month);
   renderSalaryAlert(d, month);
+  renderFree(view, d, today, month);
   $('#fx-var-card', view).hidden = income;
   renderDayChart($('#fx-day', view));
   if (!income) renderVariableChart($('#fx-var', view));
@@ -174,6 +188,14 @@ export function render(view) {
     if (g('editpay')) { const x = store.byId('transactions', g('editpay')); return x && (await import('./transactions.js')).openTxModal(x); }
     if (g('pay')) return payBill(rows.find((r) => r.bill.id === g('pay')).bill, month);
     if (g('edit')) return openBillModal(store.byId('fixedBills', g('edit')));
+    if (e.target.closest('[data-fnew]')) return openTxModal({ type: 'expense', date: month === today.slice(0, 7) ? today : `${month}-01`, origin: 'manual' }, { title: 'Novo gasto avulso' });
+    if (g('fedit')) { const x = store.byId('transactions', g('fedit')); return x && openTxModal(x); }
+    if (g('fdel')) {
+      const x = store.byId('transactions', g('fdel'));
+      if (!x || !(await confirmDialog({ title: 'Excluir gasto', text: `${x.description || 'Gasto'} · ${brl(x.amount)} em ${fmtDate(x.date)}.`, okLabel: 'Excluir', danger: true }))) return;
+      try { await store.remove('transactions', x.id); toast('Gasto excluído.', { kind: 'ok' }); } catch (err) { toast(err.message, { kind: 'err' }); }
+      return;
+    }
     if (g('arch')) {
       const b = store.byId('fixedBills', g('arch'));
       if (!(await confirmDialog({ title: income ? 'Excluir receita fixa' : 'Excluir conta', text: `"${b.name}" deixa de ser prevista. Lançamentos já feitos continuam no extrato.`, okLabel: 'Excluir', danger: true }))) return;
