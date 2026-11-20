@@ -320,3 +320,4 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .top-alert[hidden] { display: none; } .top-alert.here { border-color: #f4a62a; box-shadow: 0 0 0 3px color-mix(in srgb, #f4a62a 22%, transparent); }
 .top-alert .ta-i { color: #d98a0a; }
 @media (max-width: 800px) { .top-alert .ta-t { display: none; } .top-alert { padding: 6px 10px; } }
+.ps-card .bill-main p.small { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 4px; }
