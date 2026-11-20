@@ -67,7 +67,7 @@ export function openBillModal(bill = null, kindArg = 'expense') {
       const payload = { name: v.name, amount: v.amount, dueDay: v.dueDay, categoryId: v.categoryId && v.categoryId !== store.NEW_CAT ? v.categoryId : '', billType: kind === 'expense' ? v.billType || 'fixed' : 'fixed', dueOffset: kind === 'expense' && v.dueOffset ? 1 : 0, accountId: k === 'a' ? id : '', cardId: k === 'c' ? id : '', ownerId: v.ownerId, scope: v.scope, startMonth: v.repeat === 'once' ? v.refOnce || '' : v.startMonth || '', endMonth: v.repeat === 'once' ? v.refOnce || '' : (v.endMonth && v.endMonth !== v.startMonth ? v.endMonth : ''), method: v.method && v.method !== store.NEW_METHOD ? v.method : '', kind };
       const rec = editing ? await store.update('fixedBills', { id: bill.id, ...payload }) : await store.create('fixedBills', payload);
       toast(t.saved, { kind: 'ok' }); c.close();
-      if (payload.billType === 'variable' && v.repeat !== 'once') await linkHistory(rec, { quiet: false });
+      if (payload.billType === 'variable' && v.repeat !== 'once') await linkHistory(rec);
       if (!editing && v.repeat === 'once') {
         store.setMonth?.(payload.startMonth);
         if (await confirmDialog({ title: 'Essa conta já foi paga?', text: `"${rec.name}" de ${monthLabel(payload.startMonth)}. Registre o pagamento agora, na data em que pagou; o gasto entra no mês do pagamento.`, okLabel: kind === 'income' ? 'Registrar recebimento' : 'Registrar pagamento', cancelLabel: 'Ainda não' })) payBill(rec, payload.startMonth);
@@ -77,10 +77,10 @@ export function openBillModal(bill = null, kindArg = 'expense') {
 }
 
 /** Ao virar variável: oferece ligar os gastos antigos do extrato com o nome da conta (ex.: todos os de "Água"). */
-async function linkHistory(rec, { quiet = false } = {}) {
+async function linkHistory(rec, { quiet = false, pick = false } = {}) {
   const list = store.state.transactions.filter((x) => !x.archived && !x.fixedBillId && P.matchesBill(x, rec)).slice(0, 80);
   if (!list.length) {
-    if (quiet) return;
+    if (!pick) return;   // ao salvar a conta não abre lista nenhuma: só o botão "Ligar histórico" escolhe à mão
     return pickHistory(rec);   // nada com o nome da conta: deixa escolher à mão no extrato
   }
   const total = list.reduce((a, x) => a + x.amount, 0);
@@ -217,7 +217,7 @@ export function render(view) {
   view.onclick = async (e) => {
     const g = (a) => e.target.closest(`[data-${a}]`)?.dataset[a];
     if (e.target.closest('[data-new]')) return openBillModal(null, kind);
-    if (g('link')) return linkHistory(store.byId('fixedBills', g('link')));
+    if (g('link')) return linkHistory(store.byId('fixedBills', g('link')), { pick: true });
     if (g('editpay')) { const x = store.byId('transactions', g('editpay')); return x && (await import('./transactions.js')).openTxModal(x); }
     if (g('pay')) return payBill(rows.find((r) => r.bill.id === g('pay')).bill, month);
     if (g('edit')) return openBillModal(store.byId('fixedBills', g('edit')));
