@@ -344,3 +344,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .pick-row:hover { filter: brightness(1.08); }
 .pick-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-row span:first-of-type { color: var(--muted); font-size: .85em; min-width: 78px; }
+
+/* tela de carregamento no tema claro: centro bem claro e bordas mais escuras */
+:root:not([data-theme="dark"]) .loader { background: radial-gradient(circle at 50% 42%, #ffffff 0%, color-mix(in srgb, #ffffff 55%, var(--bg)) 22%, color-mix(in srgb, var(--brand) 14%, var(--bg)) 62%, color-mix(in srgb, var(--brand) 32%, var(--bg)) 100%); }
+:root:not([data-theme="dark"]) .ld-glow { background: radial-gradient(circle, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 70%); }
