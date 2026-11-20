@@ -24,15 +24,16 @@ function downloadCsv(name, rows) {
 
 const pickOwner = (r) => { const w = store.prefs.who; return w === 'family' ? { income: r.income, expense: r.expense } : (r.byOwner[w] || { income: 0, expense: 0 }); };
 
+let cache = null;   // último relatório baixado: reabrir a tela é instantâneo
 export async function render(view) {
   const spanSel = $('#rp-span', view);
   spanSel.value = String(span);
   spanSel.onchange = () => { span = Number(spanSel.value); render(view); };
   const box = $('#rp-body', view);
   box.innerHTML = '<div class="skeleton"></div>';
-  let rows;
-  try { rows = await api.call('report.monthly', { months: span, end: P.ym(store.today()) }, { retries: 1 }); }
-  catch (e) { box.innerHTML = emptyState('chart', 'Não consegui gerar o relatório', e.message, '<button class="btn btn-primary" data-retry>Tentar de novo</button>'); $('[data-retry]', box)?.addEventListener('click', () => render(view)); return; }
+  const key = `${span}|${P.ym(store.today())}`;
+  const fresh = () => api.call('report.monthly', { months: span, end: P.ym(store.today()) }, { retries: 1 });
+  const paint = (rows) => {
 
   const who = store.prefs.who, scopeName = who === 'family' ? 'Família' : store.userName(who);
   const vals = rows.map((r) => ({ r, ...pickOwner(r) }));
@@ -59,4 +60,16 @@ export async function render(view) {
     downloadCsv(`lancamentos-${P.ym(store.today())}.csv`, [['Data', 'Tipo', 'Valor', 'Descrição', 'Categoria', 'Conta ou cartão', 'Responsável', 'Gasto', 'Origem', 'Observações'],
       ...list.map((t) => [t.date, TYPE[t.type], t.amount, t.description, store.categoryOf(t.categoryId)?.name || '', store.sourceLabel(t), store.userName(t.ownerId), t.scope === 'shared' ? 'Compartilhado' : 'Individual', t.origin, t.notes || ''])]);
   };
+  };
+  // mostra na hora o último relatório já baixado (se houver) e atualiza em segundo plano
+  if (cache && cache.key === key) {
+    paint(cache.rows);
+    fresh().then((rows) => { if (JSON.stringify(rows) !== JSON.stringify(cache.rows)) { cache = { key, rows }; if (view.dataset.page === 'reports') paint(rows); } }).catch(() => { /* mantém o que já está na tela */ });
+    return;
+  }
+  let rows;
+  try { rows = await fresh(); }
+  catch (e) { box.innerHTML = emptyState('chart', 'Não consegui gerar o relatório', e.message, '<button class="btn btn-primary" data-retry>Tentar de novo</button>'); $('[data-retry]', box)?.addEventListener('click', () => render(view)); return; }
+  cache = { key, rows };
+  paint(rows);
 }

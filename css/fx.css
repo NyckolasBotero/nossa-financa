@@ -348,3 +348,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 /* tela de carregamento no tema claro: centro bem claro e bordas mais escuras */
 :root:not([data-theme="dark"]) .loader { background: radial-gradient(circle at 50% 42%, #ffffff 0%, color-mix(in srgb, #ffffff 55%, var(--bg)) 22%, color-mix(in srgb, var(--brand) 14%, var(--bg)) 62%, color-mix(in srgb, var(--brand) 32%, var(--bg)) 100%); }
 :root:not([data-theme="dark"]) .ld-glow { background: radial-gradient(circle, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 70%); }
+
+/* feedback imediato ao trocar de tela: a tela anterior esmaece enquanto a nova carrega */
+#view[aria-busy="true"] { opacity: .5; transition: opacity .2s .1s; }
+#view { transition: opacity .15s; }

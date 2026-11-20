@@ -4,7 +4,7 @@
 import './select.js';
 import * as api from './api.js';
 import * as store from './store.js';
-import { ROUTES, start, refresh, renderNav, renderTabbar, markActive, onRoute } from './router.js';
+import { ROUTES, start, refresh, renderNav, renderTabbar, markActive, onRoute, onRouteStart } from './router.js';
 import { $, $$, h, esc, icon, toast, setBusy, monthLabel, currentMonth } from './ui.js';
 import { addMonths } from './projections.js';
 import { CONFIG } from './config.js';
@@ -208,6 +208,8 @@ store.subscribe(() => { const k = JSON.stringify(store.state.users) + store.pref
 
 onRoute((route) => {
   if (route.id !== 'fixed') { const a = document.getElementById('top-alert'); if (a) a.hidden = true; }
+});
+onRouteStart((route) => {   // na hora do clique, antes de a tela carregar
   markActive(route);
   $('#page-title').textContent = route.label;
   show($('#month-nav'), !!route.month);

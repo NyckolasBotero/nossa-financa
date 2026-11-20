@@ -24,8 +24,13 @@ export const ROUTES = [
 
 const pages = new Map();
 let view = null, current = null, token = 0;
-const listeners = new Set();
+const listeners = new Set(), startListeners = new Set();
 export const onRoute = (fn) => { listeners.add(fn); };
+/** Roda NA HORA em que a pessoa troca de tela (antes de carregar): marcar menu, título, seletor de mês. */
+export const onRouteStart = (fn) => { startListeners.add(fn); };
+const routeOf = (id) => ROUTES.find((r) => r.id === id) || ROUTES[0];
+/** Baixa a tela e o script antes de precisar: abrir fica quase instantâneo. */
+function prefetch(route) { fetchPage(route.id).catch(() => {}); import(`./${route.module}.js`).catch(() => {}); }
 export const currentRoute = () => current?.route;
 
 async function fetchPage(id) {
@@ -42,6 +47,7 @@ async function show(keepScroll = false) {
   const route = ROUTES.find((r) => r.id === id) || ROUTES[0];
   const my = ++token, scroll = keepScroll ? window.scrollY : 0;
   view.setAttribute('aria-busy', 'true');
+  markActive(route); startListeners.forEach((fn) => fn(route));   // feedback imediato, sem esperar a tela carregar
   try {
     const [html, mod] = await Promise.all([fetchPage(route.id), import(`./${route.module}.js`)]);
     if (my !== token) return;
@@ -67,6 +73,11 @@ async function show(keepScroll = false) {
 export function start(el) {
   view = el;
   window.addEventListener('hashchange', () => show());
+  // ao tocar/clicar num item do menu: marca na hora e já começa a baixar a tela
+  const pick = (e) => { const a = e.target.closest?.('[data-route]'); if (!a) return; const r = routeOf(a.dataset.route); markActive(r); prefetch(r); };
+  document.addEventListener('pointerdown', pick, true);
+  document.addEventListener('pointerover', (e) => { const a = e.target.closest?.('[data-route]'); if (a) prefetch(routeOf(a.dataset.route)); }, true);
+  (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => ROUTES.forEach(prefetch));
   return show();
 }
 /** Redesenha a tela atual (depois de salvar algo ou de trocar escopo/mês), mantendo a rolagem. */
