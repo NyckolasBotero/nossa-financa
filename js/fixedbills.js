@@ -134,7 +134,7 @@ export function render(view) {
       ${P.isVariable(bill) ? `<p class="muted small">Variável${avg != null ? ` · média ${esc(brl(avg))} (${avgCount} ${avgCount === 1 ? 'mês' : 'meses'})` : ' · ainda sem histórico'}</p>` : ''}
       ${h.counted >= 3 && h.late > 0 ? `<p class="hint-warn">${income ? 'Atrasou' : 'Atrasou'} em ${h.late} dos últimos ${h.counted} meses</p>` : ''}</div>
       <div class="bill-r"><b class="${income ? 'pos' : ''}">${esc(brl(bill.amount))}</b>${pill(label, tone)}</div>
-      <div class="bill-a">${status === 'paid' ? '' : `<button class="btn btn-primary sm" data-pay="${esc(bill.id)}">${t.act}</button>`}<button class="btn btn-soft sm" data-edit="${esc(bill.id)}">Editar</button>${P.isVariable(bill) ? `<button class="btn btn-ghost sm" data-link="${esc(bill.id)}">Ligar histórico</button>` : ''}<button class="btn btn-danger-soft sm" data-arch="${esc(bill.id)}" aria-label="Excluir ${esc(bill.name)}">Excluir</button></div></article>`;
+      <div class="bill-a">${status === 'paid' ? (tx ? `<button class="btn btn-primary sm" data-editpay="${esc(tx.id)}">${income ? 'Editar recebimento' : 'Editar pagamento'}</button>` : '') : `<button class="btn btn-primary sm" data-pay="${esc(bill.id)}">${t.act}</button>`}<button class="btn btn-soft sm" data-edit="${esc(bill.id)}">Editar</button>${P.isVariable(bill) ? `<button class="btn btn-ghost sm" data-link="${esc(bill.id)}">Ligar histórico</button>` : ''}<button class="btn btn-danger-soft sm" data-arch="${esc(bill.id)}" aria-label="Excluir ${esc(bill.name)}">Excluir</button></div></article>`;
   }).join('') : `<div class="card">${income
     ? emptyState('wallet', 'Nenhuma receita fixa neste mês', 'Cadastre salário, aluguel recebido, pensão... Elas entram na projeção de entradas dos próximos meses.', '<button class="btn btn-primary" data-new>Cadastrar receita fixa</button>')
     : emptyState('calendar', 'Nenhuma conta fixa neste mês', 'Cadastre aluguel, internet, escola... Elas entram na previsão de gastos e nos alertas de atraso.', '<button class="btn btn-primary" data-new>Cadastrar conta fixa</button>')}</div>`;
@@ -144,6 +144,7 @@ export function render(view) {
     const g = (a) => e.target.closest(`[data-${a}]`)?.dataset[a];
     if (e.target.closest('[data-new]')) return openBillModal(null, kind);
     if (g('link')) return linkHistory(store.byId('fixedBills', g('link')));
+    if (g('editpay')) { const x = store.byId('transactions', g('editpay')); return x && (await import('./transactions.js')).openTxModal(x); }
     if (g('pay')) return payBill(rows.find((r) => r.bill.id === g('pay')).bill);
     if (g('edit')) return openBillModal(store.byId('fixedBills', g('edit')));
     if (g('arch')) {
