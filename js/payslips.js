@@ -24,6 +24,9 @@ export function openPayslipEditor(ps = null, prefill = null) {
   const accounts = store.activeOf('accounts');
   const linkedTx = ps?.transactionId ? store.state.transactions.find((t) => t.id === ps.transactionId) : null;
   const clientId = uuid();
+  // Receita fixa que este salário quita (para constar como recebida na projeção)
+  const incomes = store.activeOf('fixedBills').filter((b) => P.billKind(b) === 'income' && (b.ownerId === owner0 || b.scope === 'shared'));
+  const guess = linkedTx?.fixedBillId || (incomes.find((b) => store.categoryOf(b.categoryId)?.tag === 'salary') || incomes.find((b) => /sal[aá]rio|contracheque|folha|pagamento/i.test(b.name)) || (incomes.length === 1 ? incomes[0] : null))?.id || '';
 
   const form = h(`<form class="form ps-form" novalidate><div class="form-error" role="alert" hidden></div>
     <div class="form-grid">
@@ -35,6 +38,7 @@ export function openPayslipEditor(ps = null, prefill = null) {
         <div id="ps-items" class="ps-items"></div><button type="button" class="btn btn-ghost sm" id="ps-add">+ Adicionar item</button>
         <div class="ps-tot" id="ps-tot"></div></div>
       ${accounts.length ? `<div class="field"><label for="ps-acc">Conta que recebeu</label><select id="ps-acc">${accounts.map((a) => `<option value="${esc(a.id)}" ${a.id === (ps?.accountId || linkedTx?.accountId) ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
+      ${incomes.length ? `<div class="field"><label for="ps-fb">Conta como receita fixa</label><select id="ps-fb"><option value="">Nenhuma</option>${incomes.map((b) => `<option value="${esc(b.id)}" ${b.id === guess ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select><small class="hint">Assim o salário aparece como recebido em Receitas fixas no mês em que caiu.</small></div>` : ''}
       <div class="field"><label class="check"><input type="checkbox" id="ps-launch" ${editing ? (linkedTx ? 'checked' : '') : 'checked'}><span>${linkedTx ? 'Manter o líquido lançado no extrato' : 'Lançar o líquido como receita no extrato'}</span></label></div>` : '<p class="muted full">Cadastre uma conta para poder lançar o líquido como receita.</p>'}
       <div class="field full"><label for="ps-notes">Observações <i>(opcional)</i></label><textarea id="ps-notes" rows="2" maxlength="300">${esc(ps?.notes || '')}</textarea></div>
     </div><div class="modal-f"><span class="grow"></span><button type="button" class="btn btn-ghost" data-cancel>Cancelar</button><button type="submit" class="btn btn-primary">${editing ? 'Salvar alterações' : 'Salvar contracheque'}</button></div></form>`);
@@ -102,7 +106,8 @@ export function openPayslipEditor(ps = null, prefill = null) {
       const accountId = g('ps-acc')?.value || '', launch = !!g('ps-launch')?.checked && !!accountId;
       const payload = { ownerId, payDate, refMonth, net, gross: earn, discounts: disc, items: JSON.stringify(clean).slice(0, 5900), notes: g('ps-notes').value.trim(), accountId: launch ? accountId : '' };
       // lançamento do líquido no extrato (na data em que caiu)
-      const txBase = { amount: net, date: payDate, description: `Salário ${monthLabel(refMonth)}`, accountId, notes: `Competência ${refMonth} · Proventos ${brl(earn)} · Descontos ${brl(disc)}`.slice(0, 480), force: true };
+      const fixedBillId = g('ps-fb')?.value || '';
+      const txBase = { fixedBillId, amount: net, date: payDate, description: `Salário ${monthLabel(refMonth)}`, accountId, notes: `Competência ${refMonth} · Proventos ${brl(earn)} · Descontos ${brl(disc)}`.slice(0, 480), force: true };
       const salary = store.activeOf('categories').find((x) => x.type === 'income' && x.tag === 'salary');
       let txId = ps?.transactionId || '';
       if (launch && linkedTx) await store.update('transactions', { id: linkedTx.id, ...txBase });
