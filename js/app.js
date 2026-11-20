@@ -1,6 +1,7 @@
 /**
  * app.js — inicialização: conexão, menu lateral, filtros globais (quem/mês), ações rápidas e sincronização.
  */
+import './select.js';
 import * as api from './api.js';
 import * as store from './store.js';
 import { ROUTES, start, refresh, renderNav, renderTabbar, markActive, onRoute } from './router.js';
@@ -135,22 +136,34 @@ function paintBadges() {
 
 function bindShell() {
   const side = $('#side'), mobile = () => matchMedia('(max-width: 800px)').matches;
-  let pinned = false;     // fixado pelo botão de seta; sem fixar, o menu abre ao clicar e recolhe sozinho
+  // Estado do menu no computador: "expandido" ou "recolhido" (fica assim até você mudar) e, à parte,
+  // "abrir ao passar o mouse": ligado, o menu abre e fecha sozinho com o mouse; desligado, ignora o mouse.
+  const KEY = 'nf.side', load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } };
+  const st = { expanded: !!load().expanded, hover: !!load().hover };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch { /* sem armazenamento */ } };
+  let hovering = false, leaveT = 0;
   const setSide = (open) => { side.classList.toggle('open', open); document.body.classList.toggle('menu-open', open); $('#side-toggle').setAttribute('aria-expanded', open); $('#side-toggle').setAttribute('aria-label', open ? 'Recolher menu' : 'Expandir menu'); };
-  $('#side-toggle').addEventListener('click', () => { const open = !side.classList.contains('open'); pinned = open && !mobile(); setSide(open); });
+  const paintHover = () => { const b = $('#hover-side'); b.setAttribute('aria-checked', st.hover); b.classList.toggle('on', st.hover); $('#side-toggle').classList.toggle('dim', st.hover); };
+  const apply = () => { if (mobile()) return; setSide(st.hover ? hovering : st.expanded); };
+  $('#hover-side').innerHTML = `${icon('cursor')}<span class="nav-l">Abrir com o mouse</span><span class="sw" aria-hidden="true"></span>`;
+  paintHover(); apply();
+  $('#side-toggle').addEventListener('click', () => {
+    if (mobile()) return setSide(!side.classList.contains('open'));
+    if (st.hover) return toast('Desligue "Abrir ao passar o mouse" para fixar o menu aberto ou fechado.', { kind: 'info' });
+    st.expanded = !st.expanded; save(); apply();
+    toast(st.expanded ? 'Menu fixado aberto.' : 'Menu fixado fechado.', { kind: 'info', ms: 1600 });
+  });
+  $('#hover-side').addEventListener('click', () => {
+    st.hover = !st.hover; save(); paintHover(); hovering = st.hover && side.matches(':hover'); apply();
+    toast(st.hover ? 'O menu agora abre ao passar o mouse.' : `Menu fixado ${st.expanded ? 'aberto' : 'fechado'}; o mouse não muda mais.`, { kind: 'info', ms: 2200 });
+  });
+  side.addEventListener('mouseenter', () => { clearTimeout(leaveT); hovering = true; if (st.hover && !mobile()) setSide(true); });
+  side.addEventListener('mouseleave', () => { hovering = false; clearTimeout(leaveT); if (st.hover && !mobile()) leaveT = setTimeout(() => { if (!hovering) setSide(false); }, 140); });
+  matchMedia('(max-width: 800px)').addEventListener('change', () => { if (mobile()) setSide(false); else apply(); });
   $('#menu-btn').addEventListener('click', () => setSide(true));
   $('#side-backdrop').addEventListener('click', () => setSide(false));
-  // 1º clique em qualquer ponto do menu recolhido só EXPANDE (mostra os nomes); o seguinte navega
-  side.addEventListener('click', (e) => {
-    if (mobile() || side.classList.contains('open') || e.target.closest('#side-toggle')) return;
-    e.preventDefault(); e.stopPropagation(); setSide(true);
-  }, true);
-  $('#nav').addEventListener('click', (e) => {
-    if (!e.target.closest('a')) return;
-    if (mobile()) setSide(false); else if (!pinned) setTimeout(() => setSide(false), 260);
-  });
-  document.addEventListener('click', (e) => { if (!mobile() && !pinned && side.classList.contains('open') && !e.target.closest('#side')) setSide(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && side.classList.contains('open') && !document.body.classList.contains('modal-open')) { pinned = false; setSide(false); } });
+  $('#nav').addEventListener('click', (e) => { if (e.target.closest('a') && mobile()) setSide(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && mobile() && side.classList.contains('open') && !document.body.classList.contains('modal-open')) setSide(false); });
 
   const doTheme = () => { const t = toggleTheme(); toast(t === 'dark' ? 'Tema escuro ligado.' : 'Tema claro ligado.', { kind: 'info', ms: 1800 }); };
   $('#theme-btn').addEventListener('click', doTheme);

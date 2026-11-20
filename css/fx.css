@@ -11,8 +11,7 @@
 .main { background: transparent; }
 
 /* ---------- menu lateral em vidro (as orbes ficam foscas ao passar por trás) ---------- */
-.side { background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); border-right: 1px solid var(--glass-line); overflow: hidden; cursor: e-resize; }
-.side.open { cursor: default; }
+.side { background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); border-right: 1px solid var(--glass-line); overflow: hidden; }
 .side::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; background: linear-gradient(115deg, rgba(255, 255, 255, .28), transparent 40%, rgba(255, 255, 255, .12) 70%, transparent); background-size: 220% 100%; animation: sheen 9s ease-in-out infinite alternate; opacity: .55; }
 :root[data-theme="dark"] .side::before { opacity: .22; }
 @keyframes sheen { from { background-position: 0% 0; } to { background-position: 100% 0; } }
@@ -285,3 +284,33 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .view[data-page="fixed"] { max-width: 1560px; }
 .fx-main .kpi-row { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 .ov-t th, .ov-t td { padding: 6px 4px; }
+
+/* menu: interruptor "abrir ao passar o mouse" e seta esmaecida quando o mouse manda */
+.side-toggle.dim { opacity: .45; }
+#hover-side { width: 100%; }
+#hover-side .sw { margin-left: auto; flex: none; position: relative; width: 34px; height: 20px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 35%, transparent); transition: background .25s, opacity .2s; opacity: 0; }
+.side.open #hover-side .sw { opacity: 1; }
+#hover-side .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: transform .25s var(--pop); }
+#hover-side.on .sw { background: var(--brand); } #hover-side.on .sw::after { transform: translateX(14px); }
+#hover-side.on .ic { color: var(--brand); }
+
+/* lista suspensa (combobox) com cantos arredondados — substitui o <select> nativo */
+.cs-wrap { position: relative; display: block; min-width: 0; } .inline-sel .cs-wrap, .vc-bar .cs-wrap { display: inline-block; }
+.cs-native { position: absolute !important; inset: 0 auto auto 0; width: 1px !important; height: 1px !important; min-height: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0; pointer-events: none; }
+.cs-btn { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 46px; padding: 10px 14px; border: 1.5px solid var(--line); border-radius: 16px; background: var(--surface); text-align: left; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+.cs-btn:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); }
+.cs-btn:focus-visible, .cs-btn[aria-expanded="true"] { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent); }
+.cs-btn:disabled { opacity: .55; cursor: not-allowed; }
+.cs-v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .cs-v.ph { color: var(--muted); }
+.cs-chev { flex: none; width: 16px; height: 16px; color: var(--muted); transition: transform .25s var(--ease); } .cs-btn[aria-expanded="true"] .cs-chev { transform: rotate(180deg); }
+.field.bad .cs-btn { border-color: var(--expense); }
+.inline-sel .cs-btn { width: auto; min-height: 44px; } .vc-bar .cs-btn { max-width: 280px; padding: 8px 14px; border-radius: 999px; }
+.ps-row .cs-btn { padding: 9px 10px; }
+.cs-pop { position: fixed; z-index: 400; overflow-y: auto; padding: 6px; border-radius: 18px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 96%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 18px 44px rgba(13, 27, 39, .24); animation: cs-in .16s var(--ease); scrollbar-width: thin; }
+@keyframes cs-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+.cs-opt { padding: 10px 12px; border-radius: 12px; cursor: pointer; font-weight: 500; line-height: 1.25; }
+.cs-opt.act { background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.cs-opt.sel { color: var(--brand-strong, var(--brand)); font-weight: 700; } .cs-opt.sel::after { content: "✓"; float: right; margin-left: 10px; }
+.cs-opt.dis { opacity: .45; cursor: not-allowed; }
+.cs-grp { padding: 8px 12px 4px; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.side .nav { min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; } .side .nav::-webkit-scrollbar { display: none; }
